@@ -1,0 +1,20 @@
+{
+  "name": "midnight-apex",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "MIDNIGHT APEX — a night-city street racing demo (NFS-inspired) built with three.js",
+  "scripts": {
+    "dev": "vite --port 5391 --strictPort",
+    "build": "vite build",
+    "preview": "vite preview --port 4391",
+    "shot": "node scripts/shot.mjs"
+  },
+  "dependencies": {
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.63.0",
+    "vite": "^8.3.2"
+  }
+}

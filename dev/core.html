@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="data:," />
+    <title>MIDNIGHT APEX — core bench</title>
+    <!--
+      Core test bench: the full game (same as /index.html) but with Vite's HMR socket stubbed out, so
+      long automated playtests are not interrupted by full-page reloads while other modules are being
+      edited. Accepts every URL param of the game (?autostart=1&autopilot=1&laps=1&timescale=3 ...).
+    -->
+    <script>
+      (function () {
+        var Real = window.WebSocket;
+        window.WebSocket = function (url, proto) {
+          if (proto === 'vite-hmr' || proto === 'vite-ping') {
+            return { readyState: 0, send: function () {}, close: function () {}, addEventListener: function () {}, removeEventListener: function () {} };
+          }
+          return new Real(url, proto);
+        };
+        window.WebSocket.prototype = Real.prototype;
+        window.WebSocket.OPEN = 1; window.WebSocket.CLOSED = 3; window.WebSocket.CONNECTING = 0; window.WebSocket.CLOSING = 2;
+      })();
+    </script>
+    <style>html,body{background:#05060a;margin:0}</style>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app"></div>
+    <div id="veil">
+      <div class="veil-inner">
+        <div class="veil-logo"><span>MIDNIGHT</span> <em>APEX</em></div>
+        <div class="veil-bar"><i></i></div>
+        <div class="veil-status">Loading</div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

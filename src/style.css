@@ -1,0 +1,119 @@
+/* MIDNIGHT APEX — page shell + loading veil (HUD styles live in src/ui/hud.css). */
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: #05060a;
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+#app {
+  position: fixed;
+  inset: 0;
+}
+canvas.game-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  outline: none;
+  touch-action: none;
+}
+
+/* ---- Loading veil ---- */
+#veil {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(120% 80% at 50% 110%, rgba(0, 229, 255, 0.08), transparent 60%),
+    radial-gradient(80% 60% at 50% -10%, rgba(176, 38, 255, 0.07), transparent 60%),
+    #05060a;
+  transition: opacity 0.8s ease, visibility 0.8s;
+  pointer-events: all;
+}
+#veil.veil-out {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+.veil-inner {
+  text-align: center;
+  transform: skewX(-8deg);
+}
+.veil-logo {
+  font-family: 'Orbitron', 'Russo One', 'Rajdhani', 'Arial Black', 'Helvetica Neue', sans-serif;
+  font-weight: 900;
+  font-style: italic;
+  font-size: clamp(28px, 6vw, 72px);
+  letter-spacing: 0.12em;
+  color: #e9f6ff;
+  text-shadow: 0 0 18px rgba(0, 229, 255, 0.55), 0 0 42px rgba(0, 229, 255, 0.25);
+  animation: veil-pulse 1.8s ease-in-out infinite;
+}
+.veil-logo em {
+  font-style: inherit;
+  color: #00e5ff;
+}
+.veil-bar {
+  position: relative;
+  width: min(320px, 60vw);
+  height: 2px;
+  margin: 22px auto 14px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.veil-bar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 35%;
+  background: linear-gradient(90deg, transparent, #00e5ff, transparent);
+  animation: veil-sweep 1.2s cubic-bezier(0.6, 0, 0.4, 1) infinite;
+}
+.veil-status {
+  font-family: 'Rajdhani', 'Helvetica Neue', Arial, sans-serif;
+  font-size: 13px;
+  letter-spacing: 0.35em;
+  text-transform: uppercase;
+  color: rgba(233, 246, 255, 0.55);
+}
+.veil-error {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #ff3b5c;
+  font: 600 18px/1.4 'Helvetica Neue', Arial, sans-serif;
+  background: #05060a;
+  z-index: 1001;
+  text-align: center;
+  padding: 24px;
+}
+@keyframes veil-pulse {
+  0%, 100% { opacity: 0.75; }
+  50% { opacity: 1; }
+}
+@keyframes veil-sweep {
+  0% { transform: translateX(-110%); }
+  100% { transform: translateX(310%); }
+}
+
+/* ---- Debug overlay (?debug=1 or the ` key) ---- */
+.core-debug {
+  position: fixed;
+  top: 8px;
+  right: 8px;
+  z-index: 999;
+  margin: 0;
+  padding: 6px 9px;
+  font: 11px/1.35 ui-monospace, Menlo, Consolas, monospace;
+  color: #b8f7ff;
+  background: rgba(0, 0, 0, 0.6);
+  border-left: 2px solid #00e5ff;
+  pointer-events: none;
+  white-space: pre;
+}

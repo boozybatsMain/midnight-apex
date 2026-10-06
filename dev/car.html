@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Car Bench — MIDNIGHT APEX</title>
+<link rel="icon" href="data:," />
+<style>
+  html, body { margin: 0; height: 100%; background: #030407; overflow: hidden; font: 12px/1.4 ui-monospace, Menlo, monospace; color: #9ab; }
+  canvas { display: block; }
+  #info { position: fixed; left: 10px; top: 8px; pointer-events: none; text-shadow: 0 1px 2px #000; white-space: pre; }
+</style>
+</head>
+<body>
+<div id="info"></div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { Reflector } from 'three/addons/objects/Reflector.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { CONFIG, LAYERS } from '../src/config.js';
+import { createCarModel } from '../src/vehicle/carModel.js';
+
+// ---- Car bench. URL params:
+//   view=chase|chase2|front|side|top|rear|wheel|low|hero|hood|bumper   camera preset (turntable around the car)
+//   angle=deg (0 = behind, 90 = car's left side, 180 = front)  elev=deg  dist=m  fov=deg
+//   livery=0..7   row=1 (all 8 liveries side by side)   player=0 (no real spot lights on livery 0)
+//   lights=0|1   brake=0..1   reverse=1   nitro=0..1   steer=rad   pitch=rad   roll=rad   wspeed=rad/s (wheel spin)
+//   spin=1 (auto turntable)   floor=wet|plain|road   env=city|studio   clay=1 (grey clay, shape check)
+//   world=1 (load the real track + environment via their contracts; s=<m from start> lat=<m>)
+//   bloom=  threshold=  exposure=  envi=  msaa=  post=0 (no post-processing)  q=low
+// window.__bench = { scene, camera, renderer, cars, state, view(name, overrides), calls() } for scripted shots.
+const Q = new URLSearchParams(location.search);
+const num = (k, d) => (Q.has(k) ? parseFloat(Q.get(k)) : d);
+const VIEWS = {
+  chase: { angle: 18, elev: 11, dist: 6.4, fov: 58, ty: 0.85 },
+  chase2: { angle: 34, elev: 15, dist: 5.4, fov: 55, ty: 0.7 },
+  front: { angle: 145, elev: 9, dist: 6.6, fov: 45, ty: 0.55 },
+  side: { angle: 90, elev: 3, dist: 7.6, fov: 40, ty: 0.55 },
+  top: { angle: 0.01, elev: 89, dist: 11.5, fov: 34, ty: 0.3 },
+  rear: { angle: 0, elev: 8, dist: 6.4, fov: 42, ty: 0.6 },
+  wheel: { angle: 120, elev: 5, dist: 2.4, fov: 40, ty: 0.4, tz: 1.35, tx: 0.8 },
+  low: { angle: 20, elev: 2, dist: 5.0, fov: 50, ty: 0.5 },
+  hero: { angle: 215, elev: 6, dist: 6.0, fov: 40, ty: 0.55 },
+  // in-game cockpit cams (≈ core's calibrated hood / bumper placement), looking 30 m down the road
+  hood: { angle: 0, elev: 0.34, dist: 30, fov: 66, ty: 0.75, tz: 31.24 },
+  bumper: { angle: 0, elev: 0.15, dist: 30, fov: 68, ty: 0.42, tz: 32.4 },
+};
+const V = { ...(VIEWS[Q.get('view') || 'chase'] || VIEWS.chase) };
+V.angle = num('angle', V.angle);
+V.elev = num('elev', V.elev);
+V.dist = num('dist', V.dist);
+V.fov = num('fov', V.fov);
+const row = Q.get('row') === '1';
+const quality = Q.get('q') === 'low' ? 'low' : 'high';
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(1.5, devicePixelRatio));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = num('exposure', 1.0);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFShadowMap;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x05060a);
+scene.fog = new THREE.FogExp2(0x070812, 0.012);
+
+// ---- night environment for reflections. 'city' (default): sky gradient, lit building windows, street lamps,
+// neon strips. 'studio': dark room with soft overhead panels + neon strips.
+function windowsTexture() {
+  const c = document.createElement('canvas');
+  c.width = 1024; c.height = 256;
+  const g = c.getContext('2d');
+  g.fillStyle = '#000'; g.fillRect(0, 0, 1024, 256);
+  for (let b = 0; b < 24; b++) {
+    const x0 = b * 43 + Math.random() * 8;
+    const h = 90 + Math.random() * 160;
+    g.fillStyle = '#05060a';
+    g.fillRect(x0, 256 - h, 38, h);
+    for (let y = 256 - h + 6; y < 250; y += 9) for (let x = x0 + 3; x < x0 + 35; x += 6) {
+      if (Math.random() < 0.35) { g.fillStyle = Math.random() < 0.7 ? '#ffcf8a' : '#a8d4ff'; g.globalAlpha = 0.25 + Math.random() * 0.6; g.fillRect(x, y, 3, 4); g.globalAlpha = 1; }
+    }
+  }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+function makeEnv(kind) {
+  const env = new THREE.Scene();
+  const panel = (w, h, color, intensity, pos, rot) => {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(intensity), side: THREE.DoubleSide }));
+    m.position.set(...pos); m.rotation.set(...rot); env.add(m); return m;
+  };
+  if (kind === 'studio') {
+    const room = new THREE.Mesh(new THREE.BoxGeometry(40, 14, 40), new THREE.MeshBasicMaterial({ color: 0x07080d, side: THREE.BackSide }));
+    room.position.y = 6; env.add(room);
+    panel(12, 3, 0xffffff, 6, [0, 12.5, 0], [Math.PI / 2, 0, 0]);
+    panel(10, 1.2, 0xdfe8ff, 4, [0, 10, -8], [Math.PI / 2.4, 0, 0]);
+    panel(10, 1.2, 0xffe2c8, 3, [0, 10, 8], [-Math.PI / 2.4, 0, 0]);
+    panel(0.5, 9, 0x00e5ff, 8, [-19.5, 4, -4], [0, Math.PI / 2, 0]);
+    panel(0.5, 9, 0xff2a8a, 8, [19.5, 4, 3], [0, -Math.PI / 2, 0]);
+    panel(16, 0.4, 0xff3cac, 6, [0, 2.2, -19.5], [0, 0, 0]);
+    panel(16, 0.4, 0x30c8ff, 6, [0, 2.6, 19.5], [0, Math.PI, 0]);
+  } else {
+    // sky dome gradient
+    const sky = new THREE.Mesh(new THREE.SphereGeometry(80, 32, 16), new THREE.ShaderMaterial({
+      side: THREE.BackSide, depthWrite: false,
+      vertexShader: 'varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+      fragmentShader: 'varying vec3 vP; void main(){ float h = vP.y; vec3 c = mix(vec3(0.05,0.035,0.09), vec3(0.008,0.01,0.03), smoothstep(0.0,0.6,h)); c += vec3(0.16,0.07,0.18)*exp(-abs(h)*14.0); if (h < 0.0) c = vec3(0.012,0.012,0.018); gl_FragColor = vec4(c,1.0); }',
+    }));
+    env.add(sky);
+    // building facades with lit windows all around
+    const tex = windowsTexture(); tex.wrapS = THREE.RepeatWrapping; tex.repeat.set(3, 1);
+    const ring = new THREE.Mesh(new THREE.CylinderGeometry(34, 34, 30, 48, 1, true), new THREE.MeshBasicMaterial({ map: tex, side: THREE.BackSide, color: new THREE.Color(1.6, 1.6, 1.6) }));
+    ring.position.y = 13; env.add(ring);
+    // street lamps (bright small heads) along both sides
+    for (let i = -4; i <= 4; i++) for (const x of [-9, 9]) {
+      const l = new THREE.Mesh(new THREE.SphereGeometry(0.35, 12, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffe0b0).multiplyScalar(40) }));
+      l.position.set(x, 8, i * 14); env.add(l);
+    }
+    // neon signs
+    panel(7, 0.5, 0xff2a8a, 14, [-16, 6, -10], [0, Math.PI / 2, 0]);
+    panel(5, 0.4, 0x00e5ff, 14, [16, 7, 6], [0, -Math.PI / 2, 0]);
+    panel(6, 0.45, 0xb026ff, 12, [4, 9, -22], [0, 0, 0]);
+    panel(4, 1.4, 0xff8a1a, 6, [-6, 5, 22], [0, Math.PI, 0]);
+    panel(3, 2, 0x30c8ff, 5, [18, 4, -14], [0, -Math.PI / 2.5, 0]);
+    // broad soft overhead glow (overcast city light) so clearcoat has a long highlight
+    panel(30, 6, 0x6070a0, 0.5, [0, 25, 0], [Math.PI / 2, 0, 0]);
+  }
+  const pm = new THREE.PMREMGenerator(renderer);
+  const rt = pm.fromScene(env, 0.02);
+  pm.dispose();
+  return rt.texture;
+}
+const clay = Q.get('clay') === '1';
+const worldMode = Q.get('world') === '1';
+if (worldMode) {
+  // environment comes from the world module below
+} else if (clay) {
+  const pm = new THREE.PMREMGenerator(renderer);
+  scene.environment = pm.fromScene(new RoomEnvironment(), 0.04).texture;
+  scene.background = new THREE.Color(0x5a5f69);
+  scene.fog = null;
+} else scene.environment = makeEnv(Q.get('env') || 'city');
+scene.environmentIntensity = num('envi', clay ? 0.55 : 1.0);
+
+// ---- floor: mirror + wet asphalt overlay
+const floorMode = Q.get('floor') || (Q.get('clay') === '1' ? 'plain' : 'wet');
+if (!worldMode && floorMode !== 'plain') {
+  const mirror = new Reflector(new THREE.PlaneGeometry(80, 80), {
+    textureWidth: Math.floor(innerWidth * 0.75), textureHeight: Math.floor(innerHeight * 0.75), color: 0x8a8a8a, clipBias: 0.003,
+  });
+  mirror.rotation.x = -Math.PI / 2;
+  scene.add(mirror);
+}
+const floorMat = new THREE.MeshStandardMaterial({ color: floorMode === 'road' ? 0x0d0e11 : 0x07080b, roughness: floorMode === 'plain' ? 0.6 : 0.42, metalness: 0, transparent: floorMode !== 'plain', opacity: floorMode === 'road' ? 0.86 : 0.78 });
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), floorMat);
+floor.rotation.x = -Math.PI / 2;
+floor.position.y = 0.001;
+floor.receiveShadow = true;
+if (!worldMode) scene.add(floor);
+
+// ---- lights: dim cool moonlight with shadows + faint fill (most light comes from the env)
+const moon = new THREE.DirectionalLight(0xb8c8ff, num('moon', clay ? 2.2 : 0.6));
+moon.position.set(-6, 12, -4);
+moon.castShadow = true;
+moon.shadow.mapSize.set(2048, 2048);
+moon.shadow.camera.left = -8; moon.shadow.camera.right = 8; moon.shadow.camera.top = 8; moon.shadow.camera.bottom = -8;
+moon.shadow.bias = -0.0004;
+moon.shadow.normalBias = 0.02;
+if (!worldMode) {
+  scene.add(moon);
+  scene.add(new THREE.HemisphereLight(0x223047, 0x050608, 0.25));
+}
+
+// ---- cars
+const cars = [];
+const liveryIdx = Math.max(0, Math.min(7, parseInt(Q.get('livery') || '0', 10)));
+window.__carTiming = null;
+const t0 = performance.now();
+if (row) {
+  CONFIG.liveries.forEach((L, i) => {
+    const car = createCarModel({ ...L, isPlayer: i === 0, quality, number: i + 1 });
+    car.root.position.set((i - 3.5) * 2.6, 0, 0);
+    scene.add(car.root);
+    cars.push(car);
+  });
+} else {
+  const L = CONFIG.liveries[liveryIdx];
+  const car = createCarModel({ ...L, isPlayer: Q.get('player') !== '0' && liveryIdx === 0, quality, number: liveryIdx + 1 });
+  scene.add(car.root);
+  cars.push(car);
+}
+const buildMs = performance.now() - t0;
+let world = null;
+const carFrame = new THREE.Object3D(); // world placement of the car (identity unless world mode)
+if (worldMode) {
+  try {
+    const { createTrack } = await import('../src/world/track.js');
+    const { createEnvironment } = await import('../src/world/environment.js');
+    const track = createTrack({ renderer, quality });
+    scene.add(track.group);
+    const env = createEnvironment({ scene, renderer, track, quality });
+    if (env.envMap) scene.environment = env.envMap;
+    const slot = parseInt(Q.get('slot') || '0', 10);
+    const g = track.getStartGrid(slot);
+    const sOff = num('s', 0);
+    if (sOff) {
+      const s = (track.startS + sOff + track.length) % track.length;
+      const p = track.getPointAt(s);
+      const t = track.getTangentAt(s);
+      g.position.copy(p).addScaledVector(track.getRightAt(s), num('lat', 0));
+      g.heading = Math.atan2(t.x, t.z);
+    }
+    for (const car of cars) {
+      car.root.position.add(g.position);
+      car.root.rotation.y = g.heading;
+    }
+    carFrame.position.copy(g.position);
+    carFrame.rotation.y = g.heading;
+    world = { track, env };
+  } catch (e) {
+    console.error('world mode failed', e);
+  }
+}
+carFrame.updateMatrixWorld();
+if (clay) {
+  const clayMat = new THREE.MeshStandardMaterial({ color: 0x8f8a84, roughness: 0.38, metalness: 0 });
+  for (const car of cars) car.root.traverse((o) => { if (o.isMesh && !o.material.blending !== THREE.AdditiveBlending) o.material = clayMat; });
+}
+
+// ---- camera
+const camera = new THREE.PerspectiveCamera(V.fov, innerWidth / innerHeight, 0.05, 300);
+camera.layers.enable(LAYERS.NO_REFLECTION); // flames + beam decals live on this layer (hidden from wet-road reflections)
+const target = new THREE.Vector3(V.tx || 0, V.ty, V.tz || 0);
+const localTarget = target.clone();
+function placeCamera() {
+  const a = THREE.MathUtils.degToRad(V.angle);
+  const e = THREE.MathUtils.degToRad(V.elev);
+  const d = row ? V.dist * 2.6 : V.dist;
+  localTarget.set(V.tx || 0, V.ty, V.tz || 0);
+  camera.position.set(localTarget.x + d * Math.sin(a) * Math.cos(e), localTarget.y + d * Math.sin(e), localTarget.z - d * Math.cos(a) * Math.cos(e));
+  camera.position.applyMatrix4(carFrame.matrixWorld);
+  target.copy(localTarget).applyMatrix4(carFrame.matrixWorld);
+  camera.lookAt(target);
+}
+placeCamera();
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.copy(target);
+controls.update();
+
+// ---- post
+const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: num('msaa', Q.get('world') === '1' ? 0 : 4) }));
+composer.setPixelRatio(renderer.getPixelRatio());
+composer.setSize(innerWidth, innerHeight);
+composer.addPass(new RenderPass(scene, camera));
+// matches src/fx/postfx.js defaults (strength 0.42, radius 0.6, threshold 0.9)
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), num('bloom', clay ? 0 : 0.42), 0.6, num('threshold', 0.9));
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+});
+
+// ---- state
+const state = {
+  steerAngle: num('steer', 0),
+  wheelSpinFront: 0,
+  wheelSpinRear: 0,
+  pitch: num('pitch', 0),
+  roll: num('roll', 0),
+  brake: num('brake', 0),
+  reversing: Q.get('reverse') === '1',
+  nitro: num('nitro', 0),
+  headlights: Q.get('lights') !== '0',
+};
+const spin = Q.get('spin') === '1';
+const wheelSpeed = num('wspeed', 0); // rad/s
+const timer = new THREE.Timer();
+const info = document.getElementById('info');
+let frames = 0;
+function frame() {
+  timer.update();
+  const dt = Math.min(0.05, timer.getDelta());
+  state.wheelSpinFront += wheelSpeed * dt;
+  state.wheelSpinRear += wheelSpeed * dt;
+  if (spin) {
+    V.angle += dt * 20;
+    placeCamera();
+    controls.target.copy(target);
+  }
+  for (const car of cars) {
+    car.setState(state);
+    car.update(dt);
+  }
+  controls.update();
+  if (world) {
+    try {
+      world.env.update?.(dt, { time: timer.getElapsed(), camera, focus: carFrame.position });
+      world.track.update?.(dt, { time: timer.getElapsed(), camera });
+    } catch (e) { if (!world.err) console.error('world update', e); world.err = e; }
+  }
+  if (Q.get('post') === '0') renderer.render(scene, camera); else composer.render(dt);
+  frames++;
+  window.__bench && (window.__bench.frames = frames);
+  if (frames % 30 === 1 && Q.get('stats') !== '0') {
+    const r = window.__bench.calls();
+    info.textContent = `build ${buildMs.toFixed(0)} ms | scene calls ${r.calls} | tris ${(r.tris / 1000).toFixed(1)}k | geos ${renderer.info.memory.geometries} tex ${renderer.info.memory.textures}`;
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+function view(name, over = {}) {
+  Object.assign(V, VIEWS[name] || {}, over);
+  camera.fov = V.fov; camera.updateProjectionMatrix();
+  placeCamera(); controls.target.copy(target); controls.update();
+  return name;
+}
+window.__bench = { THREE, scene, camera, renderer, composer, cars, state, V, placeCamera, buildMs, view,
+  // draw calls of one plain scene render (includes the mirror's extra scene render when floor=wet)
+  calls: () => { renderer.info.reset(); renderer.render(scene, camera); const r = renderer.info.render; return { calls: r.calls, tris: r.triangles, buildMs }; } };
+</script>
+</body>
+</html>

@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<link rel="icon" href="data:," />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MIDNIGHT APEX — world bench</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  #info { position: fixed; left: 8px; top: 8px; color: #9fe; font: 12px/1.4 ui-monospace, Menlo, monospace; text-shadow: 0 1px 2px #000; pointer-events: none; white-space: pre; }
+</style>
+</head>
+<body>
+<div id="info"></div>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { createTrack } from '/src/world/track.js';
+import { createEnvironment } from '/src/world/environment.js';
+
+// URL params: ?s=<arc m>&speed=<m/s>&lat=<m>&aerial=1&quality=low&bloom=0&cars=0&fov=65&h=3&back=8&t=<time s>&yaw=<deg extra look>
+const P = new URLSearchParams(location.search);
+const num = (k, d) => (P.has(k) ? parseFloat(P.get(k)) : d);
+const quality = P.get('quality') || 'high';
+const aerial = P.get('aerial') === '1';
+
+const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, quality === 'high' ? 1.5 : 1));
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = num('exposure', 1.0);
+renderer.shadowMap.enabled = P.get('shadows') !== '0';
+renderer.shadowMap.type = P.get('soft') === '1' ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+renderer.info.autoReset = false;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(num('fov', 65), innerWidth / innerHeight, 0.1, 5000);
+
+const t0 = performance.now();
+const track = createTrack({ renderer, quality });
+scene.add(track.group);
+const t1 = performance.now();
+const env = createEnvironment({ scene, renderer, track, quality });
+scene.environment = env.envMap;
+if (P.get('refl') === '0' && env.reflection) env.reflection.render = () => {};
+if (aerial && P.get('fog') !== '1') scene.fog.density = 0.00025;
+if (P.has('fogd')) scene.fog.density = num('fogd', 0.0019);
+const t2 = performance.now();
+console.log(`[world] track ${(t1 - t0).toFixed(0)} ms, environment ${(t2 - t1).toFixed(0)} ms, length ${track.length.toFixed(1)} m`);
+
+// Placeholder cars (simple glossy bodies + light strips) to judge shadows / reflections.
+const cars = [];
+if (P.get('cars') !== '0') {
+  const colors = [0x0a3cff, 0xd10f1f, 0x39d353, 0xe8e8ee, 0xff8a00];
+  for (let i = 0; i < 5; i++) {
+    const g = new THREE.Group();
+    const paint = new THREE.MeshPhysicalMaterial({ color: colors[i], metalness: 0.6, roughness: 0.35, clearcoat: 1, clearcoatRoughness: 0.05 });
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.95, 0.7, 4.5), paint);
+    body.position.y = 0.55; body.castShadow = true; g.add(body);
+    const cab = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.45, 2.0), new THREE.MeshPhysicalMaterial({ color: 0x050608, metalness: 0.2, roughness: 0.05 }));
+    cab.position.set(0, 1.12, -0.3); cab.castShadow = true; g.add(cab);
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.08, 0.05), new THREE.MeshBasicMaterial({ color: new THREE.Color(8, 0.2, 0.1) }));
+    tail.position.set(0, 0.75, -2.27); g.add(tail);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.06, 0.05), new THREE.MeshBasicMaterial({ color: new THREE.Color(8, 8, 9) }));
+    head.position.set(0, 0.7, 2.27); g.add(head);
+    scene.add(g);
+    cars.push(g);
+  }
+  // player headlights (like the real car module will add)
+  const hl = new THREE.SpotLight(0xfff2e0, 260, 90, 0.42, 0.45, 1.6);
+  hl.position.set(0, 0.8, 2.0); hl.target.position.set(0, 0, 25);
+  cars[0].add(hl, hl.target);
+}
+
+let s = num('s', 30);
+const speed = num('speed', 0);
+const lat = num('lat', 1.8);
+let time = num('t', 3);
+
+const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType }));
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), num('bloom', 0.85), 0.6, 0.9);
+if (P.get('bloom') !== '0') composer.addPass(bloom);
+composer.addPass(new OutputPass());
+function resize() {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setPixelRatio(renderer.getPixelRatio());
+  composer.setSize(innerWidth, innerHeight);
+}
+addEventListener('resize', resize);
+resize();
+
+const tmpP = new THREE.Vector3(), tmpT = new THREE.Vector3(), tmpR = new THREE.Vector3();
+function placeCars() {
+  cars.forEach((c, i) => {
+    const cs = s + (i === 0 ? 0 : 10 + i * 9);
+    const cl = i === 0 ? lat : (i % 2 ? 3.5 : -3.5);
+    track.getPointAt(cs, tmpP); track.getRightAt(cs, tmpR); track.getTangentAt(cs, tmpT);
+    c.position.copy(tmpP).addScaledVector(tmpR, cl);
+    c.rotation.y = Math.atan2(tmpT.x, tmpT.z);
+  });
+}
+// ?cam=x,y,z&look=x,y,z : free camera (absolute world coordinates) for close-up checks
+const camAbs = P.has('cam') ? P.get('cam').split(',').map(Number) : null;
+const lookAbs = P.has('look') ? P.get('look').split(',').map(Number) : null;
+// ?camS=s,lat,h&lookS=s,lat,h : camera / target in track space (arc length, lateral, height)
+const trackPt = (str) => { const [ts, tl, th] = str.split(',').map(Number); const p = track.getPointAt(ts), r = track.getRightAt(ts); return p.addScaledVector(r, tl).setY(th); };
+function placeCamera() {
+  if (P.has('camS')) {
+    camera.position.copy(trackPt(P.get('camS')));
+    camera.lookAt(trackPt(P.get('lookS') || P.get('camS')));
+    return;
+  }
+  if (camAbs) {
+    camera.position.set(camAbs[0], camAbs[1], camAbs[2]);
+    if (lookAbs) camera.lookAt(lookAbs[0], lookAbs[1], lookAbs[2]);
+    return;
+  }
+  if (aerial) {
+    const ax = num('ax', -20), az = num('az', 200), ah = num('ah', 1100);
+    camera.position.set(ax, ah, az + ah * 0.35);
+    camera.lookAt(ax, 0, az);
+    return;
+  }
+  const back = num('back', 8), h = num('h', 3);
+  track.getPointAt(s - back, tmpP); track.getRightAt(s - back, tmpR);
+  camera.position.copy(tmpP).addScaledVector(tmpR, lat);
+  camera.position.y = h;
+  const look = new THREE.Vector3();
+  track.getPointAt(s + num('ahead', 14), look); track.getRightAt(s + num('ahead', 14), tmpR);
+  look.addScaledVector(tmpR, lat * 0.6);
+  look.y = num('lookY', 1.2);
+  camera.lookAt(look);
+  const yaw = num('yaw', 0) * Math.PI / 180;
+  if (yaw) camera.rotateY(yaw);
+  const pitch = num('pitch', 0) * Math.PI / 180;
+  if (pitch) camera.rotateX(pitch);
+}
+
+// Optional GPU timing (EXT_disjoint_timer_query_webgl2): ?gpu=1 → window.__bench.gpu = { env, main } ms (EMA)
+const gl = renderer.getContext();
+const tq = P.get('gpu') === '1' ? gl.getExtension('EXT_disjoint_timer_query_webgl2') : null;
+const gpuTimes = {}; const pending = []; let curQ = null;
+function gpuBegin(name) { if (!tq || curQ) return; const q = gl.createQuery(); gl.beginQuery(tq.TIME_ELAPSED_EXT, q); curQ = { q, name }; }
+function gpuEnd() { if (!tq || !curQ) return; gl.endQuery(tq.TIME_ELAPSED_EXT); pending.push(curQ); curQ = null; }
+function gpuPoll() {
+  if (!tq) return;
+  while (pending.length && gl.getQueryParameter(pending[0].q, gl.QUERY_RESULT_AVAILABLE)) {
+    const { q, name } = pending.shift();
+    if (!gl.getParameter(tq.GPU_DISJOINT_EXT)) { const ms = gl.getQueryParameter(q, gl.QUERY_RESULT) / 1e6; gpuTimes[name] = gpuTimes[name] ? gpuTimes[name] * 0.9 + ms * 0.1 : ms; }
+    gl.deleteQuery(q);
+  }
+}
+const info = document.getElementById('info');
+if (P.get('noinfo') === '1') info.style.display = 'none';
+let last = performance.now(), frames = 0, fpsT = last, fps = 0;
+const stats = { calls: 0, triangles: 0, mainCalls: 0 };
+window.__bench = { renderer, scene, camera, track, env, stats, gpu: gpuTimes, setS: (v) => { s = v; } };
+
+function frame() {
+  const now = performance.now();
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  time += dt;
+  s += speed * dt;
+  placeCars();
+  placeCamera();
+  renderer.info.reset();
+  const focus = cars[0] ? cars[0].position : camera.position;
+  track.update(dt, { time, camera });
+  gpuBegin('env');
+  env.update(dt, { time, camera, focus });
+  gpuEnd();
+  const reflCalls = renderer.info.render.calls;
+  gpuBegin('main');
+  composer.render(dt);
+  gpuEnd();
+  gpuPoll();
+  if (P.get('showrefl') === '1' && env.reflection) {
+    // debug: blit the planar reflection target into the top-right corner
+    if (!window.__dbgQuad) {
+      const m = new THREE.MeshBasicMaterial({ map: env.reflection.texture, toneMapped: true });
+      window.__dbgQuad = { scene: new THREE.Scene(), cam: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1) };
+      const q = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), m);
+      q.position.set(0.5, 0.5, 0); window.__dbgQuad.scene.add(q);
+    }
+    renderer.autoClear = false; renderer.render(window.__dbgQuad.scene, window.__dbgQuad.cam); renderer.autoClear = true;
+  }
+  stats.calls = renderer.info.render.calls;
+  stats.triangles = renderer.info.render.triangles;
+  stats.reflCalls = reflCalls;
+  frames++;
+  if (now - fpsT > 1000) { fps = frames * 1000 / (now - fpsT); frames = 0; fpsT = now; }
+  info.textContent = `s ${((s % track.length + track.length) % track.length).toFixed(0)}  fps ${fps.toFixed(0)}\ncalls ${stats.calls} (refl ${reflCalls})  tris ${(stats.triangles / 1000).toFixed(0)}k`;
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+setTimeout(() => console.log('[world] calls', stats.calls, 'reflection calls', stats.reflCalls, 'triangles', stats.triangles, 'geometries', renderer.info.memory.geometries, 'textures', renderer.info.memory.textures), 2500);
+</script>
+</body>
+</html>

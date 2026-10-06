@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MIDNIGHT APEX — HUD bench</title>
+    <link rel="icon" href="data:," />
+    <style>
+      html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+      #bg { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+      #info { position: fixed; right: 8px; top: 6px; z-index: 99; font: 11px/1.3 ui-monospace, monospace; color: #6cf8; pointer-events: none; }
+    </style>
+  </head>
+  <body>
+    <canvas id="bg"></canvas>
+    <div id="info"></div>
+    <script type="module">
+      // HUD bench: ?screen=flow|menu|race|countdown|pause|results  (&cd=3|2|1|GO, &t=seconds to freeze sim time,
+      // &bg=0 plain dark background, &msg=1 force sample messages, &drift=1 force live drift meter)
+      import { createHUD } from '/src/ui/hud.js';
+      import { CONFIG } from '/src/config.js';
+
+      const P = new URLSearchParams(location.search);
+      const screen = P.get('screen') || 'flow';
+      const freezeT = P.has('t') ? parseFloat(P.get('t')) : null;
+
+      // ------------------------------------------------------------------ painted neon-city backdrop
+      const bg = document.getElementById('bg');
+      function paintCity() {
+        const dpr = Math.min(2, devicePixelRatio || 1);
+        const W = (bg.width = Math.round(innerWidth * dpr)), H = (bg.height = Math.round(innerHeight * dpr));
+        const g = bg.getContext('2d');
+        let seed = 9;
+        const r = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+        if (P.get('bg') === '0') { g.fillStyle = '#05070d'; g.fillRect(0, 0, W, H); return; }
+        const hz = H * 0.47;
+        let gr = g.createLinearGradient(0, 0, 0, hz);
+        gr.addColorStop(0, '#03030a'); gr.addColorStop(0.6, '#0b0820'); gr.addColorStop(1, '#2a1238');
+        g.fillStyle = gr; g.fillRect(0, 0, W, hz);
+        // building canyon: left and right walls of towers converging to the vanishing point
+        const vx = W * 0.5;
+        const neon = ['#ff2bd6', '#00e5ff', '#ff6a00', '#7c4dff', '#ff2d55', '#39ff88'];
+        for (let side = -1; side <= 1; side += 2) {
+          for (let i = 0; i < 26; i++) {
+            const t = i / 26;
+            const x0 = vx + side * (W * 0.03 + Math.pow(t, 1.7) * W * 0.62);
+            const w = (10 + t * t * 260) * dpr * (0.7 + r() * 0.6);
+            const top = hz - (40 + r() * 260 + t * 420) * dpr;
+            g.fillStyle = `rgb(${8 + t * 6},${8 + t * 6},${18 + t * 10})`;
+            g.fillRect(side < 0 ? x0 - w : x0, top, w, hz - top + 4);
+            // windows
+            g.globalAlpha = 0.5;
+            for (let k = 0; k < w * (hz - top) / (900 * dpr * dpr); k++) {
+              g.fillStyle = r() < 0.7 ? '#ffd9a0' : '#9fe8ff';
+              g.fillRect((side < 0 ? x0 - w : x0) + r() * w, top + r() * (hz - top), 2 * dpr * (0.5 + t), 2.5 * dpr * (0.5 + t));
+            }
+            g.globalAlpha = 1;
+            if (r() < 0.55) {
+              const c = neon[(r() * neon.length) | 0];
+              const nw = w * (0.3 + r() * 0.5), nh = (6 + r() * 40) * dpr * (0.4 + t);
+              const nx = (side < 0 ? x0 - w : x0) + r() * (w - nw), ny = top + r() * (hz - top) * 0.7;
+              g.shadowColor = c; g.shadowBlur = 30 * dpr; g.fillStyle = c;
+              g.fillRect(nx, ny, nw, nh);
+              g.shadowBlur = 0;
+              // wet reflection streak on the road below
+              const rg = g.createLinearGradient(0, hz, 0, H);
+              rg.addColorStop(0, c + '00'); rg.addColorStop(0.2, c + '55'); rg.addColorStop(1, c + '00');
+              g.fillStyle = rg;
+              const rx = vx + (nx + nw / 2 - vx) * (0.9 + r() * 0.3);
+              g.fillRect(rx - nw * 0.15, hz, nw * 0.3, (H - hz) * (0.6 + t * 0.4));
+            }
+          }
+        }
+        // road
+        gr = g.createLinearGradient(0, hz, 0, H);
+        gr.addColorStop(0, '#0a0912'); gr.addColorStop(1, '#030305');
+        g.globalCompositeOperation = 'destination-over';
+        g.fillStyle = gr; g.fillRect(0, hz, W, H - hz);
+        g.globalCompositeOperation = 'source-over';
+        // streetlight pools
+        for (let i = 0; i < 9; i++) {
+          const t = Math.pow((i + 1) / 9, 1.8);
+          for (const s of [-1, 1]) {
+            const x = vx + s * t * W * 0.5, y = hz + t * (H - hz) * 0.9;
+            const rr = (20 + t * 380) * dpr;
+            const pg = g.createRadialGradient(x, y, 0, x, y, rr);
+            pg.addColorStop(0, 'rgba(255,170,90,0.28)'); pg.addColorStop(1, 'rgba(255,170,90,0)');
+            g.fillStyle = pg; g.beginPath(); g.ellipse(x, y, rr, rr * 0.35, 0, 0, Math.PI * 2); g.fill();
+          }
+        }
+        // lane markings
+        g.strokeStyle = 'rgba(255,255,255,0.35)';
+        for (const lx of [-0.5, 0, 0.5]) {
+          for (let i = 0; i < 12; i++) {
+            const t0 = Math.pow(i / 12, 2), t1 = Math.pow((i + 0.45) / 12, 2);
+            g.lineWidth = (1 + t1 * 10) * dpr;
+            g.beginPath();
+            g.moveTo(vx + lx * t0 * W * 0.9, hz + t0 * (H - hz));
+            g.lineTo(vx + lx * t1 * W * 0.9, hz + t1 * (H - hz));
+            g.stroke();
+          }
+        }
+        // the player car (rear silhouette + taillight bar) where a chase camera would put it
+        const cw = W * 0.24, ch = cw * 0.36, cx = W / 2, cy = H * 0.8;
+        g.fillStyle = '#05060a';
+        g.beginPath();
+        g.moveTo(cx - cw / 2, cy + ch * 0.5);
+        g.lineTo(cx - cw * 0.48, cy - ch * 0.1);
+        g.lineTo(cx - cw * 0.3, cy - ch * 0.55);
+        g.lineTo(cx + cw * 0.3, cy - ch * 0.55);
+        g.lineTo(cx + cw * 0.48, cy - ch * 0.1);
+        g.lineTo(cx + cw / 2, cy + ch * 0.5);
+        g.closePath(); g.fill();
+        g.shadowColor = '#ff1030'; g.shadowBlur = 25 * dpr; g.fillStyle = '#ff2040';
+        g.fillRect(cx - cw * 0.44, cy - ch * 0.08, cw * 0.88, ch * 0.07);
+        g.shadowBlur = 0;
+        g.fillStyle = 'rgba(0,0,0,0.5)';
+        g.beginPath(); g.ellipse(cx, cy + ch * 0.55, cw * 0.6, ch * 0.12, 0, 0, Math.PI * 2); g.fill();
+        // rain streaks
+        g.strokeStyle = 'rgba(180,210,255,0.12)'; g.lineWidth = 1 * dpr;
+        g.beginPath();
+        for (let i = 0; i < 500; i++) { const x = r() * W, y = r() * H, l = (10 + r() * 30) * dpr; g.moveTo(x, y); g.lineTo(x - l * 0.15, y + l); }
+        g.stroke();
+      }
+      paintCity();
+      addEventListener('resize', paintCity);
+
+      // ------------------------------------------------------------------ demo track (closed city circuit)
+      function demoTrack(n = 256) {
+        const C = [[0, -120], [0, 300], [10, 420], [60, 520], [150, 560], [250, 540], [300, 470], [300, 380], [345, 340], [430, 335],
+          [500, 300], [520, 230], [470, 175], [400, 160], [370, 110], [400, 60], [440, 20], [430, -60], [360, -120], [300, -110],
+          [260, -60], [210, -60], [180, -120], [140, -200], [60, -220], [10, -190]];
+        const cr = (p0, p1, p2, p3, t) => 0.5 * (2 * p1 + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t + (-p0 + 3 * p1 - 3 * p2 + p3) * t * t * t);
+        const dense = [];
+        const m = C.length;
+        for (let i = 0; i < m; i++) for (let k = 0; k < 40; k++) {
+          const t = k / 40, a = C[(i - 1 + m) % m], b = C[i], c = C[(i + 1) % m], d = C[(i + 2) % m];
+          dense.push([cr(a[0], b[0], c[0], d[0], t), cr(a[1], b[1], c[1], d[1], t)]);
+        }
+        const cum = [0];
+        for (let i = 1; i <= dense.length; i++) { const a = dense[i - 1], b = dense[i % dense.length]; cum.push(cum[i - 1] + Math.hypot(b[0] - a[0], b[1] - a[1])); }
+        const L = cum[cum.length - 1];
+        const out = [];
+        let j = 0;
+        for (let i = 0; i < n; i++) {
+          const s = (i / n) * L;
+          while (cum[j + 1] < s) j++;
+          const a = dense[j], b = dense[(j + 1) % dense.length], f = (s - cum[j]) / (cum[j + 1] - cum[j] || 1);
+          out.push([a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f]);
+        }
+        return { poly: out, length: L };
+      }
+      // Prefer the real circuit (pure-math TrackPath) so the minimap is judged on the actual layout.
+      let poly, L;
+      if (P.get('track') !== 'demo') {
+        try {
+          const { createTrackPath } = await import('/src/world/track.js');
+          const tp = createTrackPath();
+          poly = tp.getMinimapPolyline(256);
+          L = tp.length;
+        } catch (e) { console.warn('[bench] real track unavailable, using demo loop', e); }
+      }
+      if (!poly) ({ poly, length: L } = demoTrack());
+      const at = (s) => {
+        s = ((s % L) + L) % L;
+        const f = (s / L) * poly.length, i = Math.floor(f), k = f - i;
+        const a = poly[i % poly.length], b = poly[(i + 1) % poly.length];
+        return { x: a[0] + (b[0] - a[0]) * k, z: a[1] + (b[1] - a[1]) * k, heading: Math.atan2(b[0] - a[0], b[1] - a[1]) };
+      };
+
+      // ------------------------------------------------------------------ HUD + simulated race
+      const hud = createHUD();
+      window.hud = hud;
+      hud.setTrack(poly);
+      const liv = CONFIG.liveries;
+      const racers = 5;
+      const cars = Array.from({ length: racers }, (_, i) => ({ s: 40 - i * 14, v: 0, isPlayer: i === 0, color: liv[i].color, x: 0, z: 0, heading: 0 }));
+      const sim = { t: 0, speed: 0, gear: 1, rpm: 900, nitro: 0.85, nitroActive: false, lapStart: 0, lap: 1, best: null, last: null, pos: 3, drift: 0, running: false };
+      window.sim = sim;
+      const ratios = [0, 3.1, 2.15, 1.62, 1.28, 1.05, 0.88];
+      const rpmFor = (kmh, g) => 900 + kmh * ratios[g] * 26;
+
+      function stepSim(dt) {
+        sim.t += dt;
+        const t = sim.t;
+        // speed profile: accelerate, brake for corners periodically
+        const phase = t % 14;
+        const target = phase < 9 ? 290 : phase < 10.6 ? 95 : 180;
+        const acc = target > sim.speed ? (sim.nitroActive ? 26 : 16) * (1 - sim.speed / 340) : -55;
+        sim.speed = Math.max(0, sim.speed + acc * dt);
+        sim.nitroActive = phase > 4 && phase < 7.5 && sim.nitro > 0.02;
+        sim.nitro = Math.min(1, Math.max(0, sim.nitro + (sim.nitroActive ? -0.2 : 0.05) * dt));
+        sim.rpm = rpmFor(sim.speed, sim.gear);
+        if (sim.rpm > 7700 && sim.gear < 6) sim.gear++;
+        else if (sim.gear > 1 && rpmFor(sim.speed, sim.gear - 1) < 6200) sim.gear--;
+        sim.rpm = Math.min(8050, rpmFor(sim.speed, sim.gear)) + (sim.rpm > 7900 ? Math.sin(t * 90) * 120 : 0);
+        sim.drift = phase > 10.2 && phase < 13.2 ? 0.55 + 0.25 * Math.sin(t * 3) : 0;
+        // cars along the polyline
+        cars.forEach((c, i) => {
+          c.s += (c.isPlayer ? sim.speed : 175 + i * 6 + 30 * Math.sin(t * 0.3 + i)) / 3.6 * dt;
+          Object.assign(c, at(c.s));
+        });
+        // positions shuffle
+        const p = 1 + (Math.floor(t / 6) % 4);
+        sim.pos = p === 4 ? 2 : p;
+        // laps every 22s
+        const lapLen = 22;
+        const lap = 1 + Math.floor(t / lapLen);
+        if (lap !== sim.lap) {
+          const lt = lapLen - 0.3 + Math.sin(lap) * 0.8 + 36;
+          sim.last = lt;
+          const newBest = !sim.best || lt < sim.best;
+          if (newBest) { sim.best = lt; if (screen !== 'race' || !P.has('t')) hud.flash(`NEW BEST LAP ${fmt(lt)}`, { kind: 'good', duration: 2.5 }); }
+          sim.lap = lap;
+          if (((lap - 1) % CONFIG.race.laps) + 1 === CONFIG.race.laps) hud.flash('FINAL LAP', { kind: 'info', duration: 2.5 });
+        }
+      }
+      const fmt = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}.${String(Math.floor((t % 1) * 1000)).padStart(3, '0')}`;
+
+      function state() {
+        const t = sim.t;
+        return {
+          speedKmh: sim.speed, rpm: sim.rpm, maxRpm: 8000, gear: sim.speed < 1 && sim.t < 0.1 ? 0 : sim.gear,
+          nitro: sim.nitro, nitroActive: sim.nitroActive,
+          lap: ((sim.lap - 1) % CONFIG.race.laps) + 1, totalLaps: CONFIG.race.laps,
+          position: sim.pos, totalRacers: racers,
+          lapTime: (t % 22) + 36.1, totalTime: t + 36.1 * (sim.lap), bestLap: sim.best, lastLap: sim.last,
+          cars: cars.map((c) => ({ x: c.x, z: c.z, heading: c.heading, isPlayer: c.isPlayer, color: c.color })),
+          drift: P.get('drift') === '1' ? 0.7 : sim.drift,
+        };
+      }
+
+      const fakeResults = () => [
+        { name: 'RAZOR', time: 182.412, bestLap: 59.874, color: liv[1].color },
+        { name: 'YOU', time: 183.008, bestLap: 58.231, isPlayer: true, color: liv[0].color },
+        { name: 'VENOM', time: 185.77, bestLap: 60.902, color: liv[2].color },
+        { name: 'GHOST', time: 189.315, bestLap: 61.447, color: liv[3].color },
+        { name: 'NOVA', time: null, bestLap: 62.01, color: liv[4].color, dnf: true },
+      ];
+
+      let last = performance.now();
+      function loop(now) {
+        const dt = Math.min(0.05, (now - last) / 1000);
+        last = now;
+        if (sim.running) {
+          if (freezeT != null) { if (sim.t < freezeT) { while (sim.t < freezeT) stepSim(1 / 60); } }
+          else stepSim(dt);
+        }
+        hud.update(state());
+        document.getElementById('info').textContent = `screen=${screen}  t=${sim.t.toFixed(1)}`;
+        requestAnimationFrame(loop);
+      }
+      requestAnimationFrame(loop);
+
+      // ------------------------------------------------------------------ screens
+      async function countdown() {
+        hud.showHUD(true);
+        for (const v of [3, 2, 1]) { hud.showCountdown(v); await new Promise((r) => setTimeout(r, 1000)); }
+        hud.showCountdown('GO');
+        sim.running = true;
+        setTimeout(() => hud.hideCountdown(), 900);
+      }
+      function menu() {
+        hud.showHUD(false);
+        hud.showMenu({
+          title: CONFIG.title, subtitle: CONFIG.subtitle,
+          onStart: () => { console.log('[bench] onStart'); window.started = (window.started || 0) + 1; hud.hideMenu(); countdown(); setTimeout(() => results(), 30000); },
+        });
+      }
+      function results() {
+        sim.running = false;
+        hud.showHUD(false);
+        hud.showResults(fakeResults(), { onRestart: () => { console.log('[bench] onRestart'); window.restarted = (window.restarted || 0) + 1; hud.hideResults(); Object.assign(sim, { t: 0, speed: 0, lap: 1, best: null, last: null }); menu(); } });
+      }
+
+      if (screen === 'menu' || screen === 'flow') menu();
+      else if (screen === 'race') {
+        hud.showHUD(true); sim.running = true;
+        if (P.get('msg') === '1') setTimeout(() => { hud.flash('FINAL LAP'); hud.flash('NEW BEST LAP 0:58.231', { kind: 'good' }); }, 300);
+        if (P.get('msg') === 'warn') setInterval(() => hud.flash('WRONG WAY', { kind: 'warn', duration: 0.6 }), 200);
+      } else if (screen === 'countdown') {
+        hud.showHUD(true);
+        if (P.has('cd')) hud.showCountdown(P.get('cd') === 'GO' ? 'GO' : +P.get('cd'));
+        else (async () => { for (;;) { await countdown(); await new Promise((r) => setTimeout(r, 1500)); sim.running = false; } })();
+      } else if (screen === 'pause') {
+        hud.showHUD(true); sim.running = true;
+        setTimeout(() => { sim.running = false; hud.showPause(true, { onResume: () => { console.log('[bench] resume'); hud.showPause(false); sim.running = true; }, onRestart: () => console.log('[bench] restart') }); }, P.has('t') ? 50 : 1200);
+      } else if (screen === 'results') results();
+    </script>
+  </body>
+</html>

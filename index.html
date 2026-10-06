@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#05060a" />
+    <link rel="icon" href="data:," />
+    <title>MIDNIGHT APEX</title>
+    <!-- Critical paint: dark from the very first frame (no white flash before CSS/JS load). -->
+    <style>html,body{background:#05060a;margin:0}</style>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app"></div>
+    <div id="veil" aria-live="polite">
+      <div class="veil-inner">
+        <div class="veil-logo"><span>MIDNIGHT</span> <em>APEX</em></div>
+        <div class="veil-bar"><i></i></div>
+        <div class="veil-status">Loading</div>
+      </div>
+    </div>
+    <noscript><div class="veil-error">MIDNIGHT APEX needs JavaScript and WebGL.</div></noscript>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

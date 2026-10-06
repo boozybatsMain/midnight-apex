@@ -1,0 +1,753 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+<link rel="icon" href="data:," />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Audio Bench — MIDNIGHT APEX</title>
+    <style>
+      :root { --bg: #0b0d14; --panel: #141826; --line: #252b40; --fg: #d7def0; --dim: #7c86a6; --acc: #00e5ff; --warn: #ff3b5c; }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--fg); font: 12px/1.4 ui-monospace, Menlo, monospace; }
+      header { padding: 10px 14px; border-bottom: 1px solid var(--line); display: flex; gap: 12px; align-items: center; }
+      header h1 { margin: 0; font-size: 15px; letter-spacing: 0.08em; color: var(--acc); }
+      main { display: grid; grid-template-columns: 300px 1fr; gap: 10px; padding: 10px; }
+      .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 10px; }
+      .panel h2 { margin: 0 0 8px; font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.12em; }
+      label.row { display: grid; grid-template-columns: 78px 1fr 56px; align-items: center; gap: 6px; margin: 4px 0; }
+      input[type='range'] { width: 100%; }
+      button { background: #1d2336; color: var(--fg); border: 1px solid #323a57; border-radius: 4px; padding: 5px 8px; margin: 2px; font: inherit; cursor: pointer; }
+      button:hover { border-color: var(--acc); }
+      button.on { background: #063a44; border-color: var(--acc); }
+      canvas { display: block; width: 100%; background: #05060a; border: 1px solid var(--line); border-radius: 4px; }
+      .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+      table { border-collapse: collapse; width: 100%; font-size: 11px; }
+      td, th { border-bottom: 1px solid var(--line); padding: 2px 6px; text-align: right; white-space: nowrap; }
+      td:first-child, th:first-child { text-align: left; }
+      .bad { color: var(--warn); }
+      .good { color: #5dffa0; }
+      #status { color: var(--dim); }
+      .caption { color: var(--dim); margin: 6px 0 2px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>MIDNIGHT APEX · AUDIO BENCH</h1>
+      <button id="init">INIT AUDIO</button>
+      <button id="runTests">RUN OFFLINE ANALYSIS</button>
+      <span id="status">not initialised</span>
+    </header>
+    <main>
+      <div>
+        <div class="panel">
+          <h2>Player engine</h2>
+          <label class="row">rpm <input id="rpm" type="range" min="700" max="8300" value="900" step="10" /><span id="rpmV"></span></label>
+          <label class="row">throttle <input id="thr" type="range" min="0" max="1" value="0" step="0.01" /><span id="thrV"></span></label>
+          <label class="row">load <input id="load" type="range" min="0" max="1" value="0" step="0.01" /><span id="loadV"></span></label>
+          <label class="row">speed <input id="spd" type="range" min="0" max="330" value="0" step="1" /><span id="spdV"></span></label>
+          <label class="row">gear <input id="gear" type="range" min="-1" max="6" value="1" step="1" /><span id="gearV"></span></label>
+          <div>
+            <button id="sweep">AUTO RPM SWEEP</button>
+            <button id="drive">SIM DRIVE (W/S/Space/Shift)</button>
+          </div>
+        </div>
+        <div class="panel" style="margin-top: 10px">
+          <h2>Layers</h2>
+          <label class="row">skid <input id="skid" type="range" min="0" max="1" value="0" step="0.01" /><span id="skidV"></span></label>
+          <label class="row">wind km/h <input id="wind" type="range" min="0" max="330" value="0" step="1" /><span id="windV"></span></label>
+          <label class="row">volume <input id="vol" type="range" min="0" max="1.2" value="0.9" step="0.01" /><span id="volV"></span></label>
+          <button id="amb">AMBIENCE</button><button id="music">MUSIC</button><button id="nitro">NITRO</button><button id="mute">MUTE</button>
+          <button id="opps">4 OPPONENTS</button><button id="flyby">OPP FLY-BY</button>
+        </div>
+        <div class="panel" style="margin-top: 10px">
+          <h2>One-shots</h2>
+          <button data-a="shiftUp">SHIFT UP</button><button data-a="shiftDown">SHIFT DOWN</button><button data-a="bov">BLOW-OFF</button>
+          <button data-a="backfire">BACKFIRE</button><button data-a="impactL">IMPACT 0.3</button><button data-a="impactH">IMPACT 1.0</button>
+          <button data-a="scrape">SCRAPE 1.5s</button><button data-a="beep">BEEP</button><button data-a="go">GO</button>
+          <button data-a="hover">UI HOVER</button><button data-a="select">UI SELECT</button><button data-a="lap">LAP</button>
+          <button data-a="finish">FINISH</button><button data-a="thunder">THUNDER</button><button data-a="siren">SIREN</button>
+        </div>
+      </div>
+      <div>
+        <div class="panel">
+          <h2>Live output</h2>
+          <canvas id="live" width="1200" height="220"></canvas>
+          <div id="liveInfo" class="caption"></div>
+        </div>
+        <div class="panel" style="margin-top: 10px">
+          <h2>Offline analysis</h2>
+          <div class="caption">Drive run spectrogram (accel through gears with shifts, lift-off overrun, idle; log f 25 Hz – 14 kHz)</div>
+          <canvas id="specDrive" width="1200" height="240"></canvas>
+          <div class="grid2">
+            <div><div class="caption">Engine points (spectra, dB)</div><canvas id="specPts" width="600" height="240"></canvas></div>
+            <div><div class="caption">Engine waveforms (40 ms): 900/0 · 3500/1 · 6500/1 · 7000/0 · limiter</div><canvas id="wave" width="600" height="240"></canvas></div>
+          </div>
+          <div class="caption">SFX montage spectrogram</div>
+          <canvas id="specSfx" width="1200" height="200"></canvas>
+          <div id="results"></div>
+        </div>
+      </div>
+    </main>
+    <script type="module">
+      import { createAudio } from '../src/audio/audio.js';
+
+      const $ = (id) => document.getElementById(id);
+      const audio = createAudio();
+      window.__audio = audio;
+      let analyser = null;
+
+      // ---------------------------------------------------------------- live controls
+      const ctl = { rpm: 900, thr: 0, load: 0, spd: 0, gear: 1, skid: 0, wind: 0, vol: 0.9 };
+      let sweep = false, drive = false, oppsOn = false, flyT = -1;
+      for (const k of ['rpm', 'thr', 'load', 'spd', 'gear', 'skid', 'wind', 'vol']) {
+        const el = $(k);
+        const show = () => ($(k + 'V').textContent = (+el.value).toFixed(k === 'thr' || k === 'load' || k === 'skid' || k === 'vol' ? 2 : 0));
+        el.addEventListener('input', () => {
+          ctl[k] = +el.value;
+          if (k === 'thr') { ctl.load = ctl.thr; $('load').value = ctl.thr; $('loadV').textContent = ctl.thr.toFixed(2); }
+          if (k === 'vol') audio.setMasterVolume(ctl.vol);
+          show();
+        });
+        show();
+      }
+      const toggle = (id, fn) => $(id).addEventListener('click', (e) => { const on = !e.target.classList.contains('on'); e.target.classList.toggle('on', on); fn(on); });
+      toggle('amb', (on) => audio.setAmbience(on));
+      toggle('music', (on) => audio.setMusic(on));
+      toggle('nitro', (on) => audio.setNitro(on));
+      toggle('mute', () => audio.toggleMute());
+      toggle('sweep', (on) => (sweep = on));
+      toggle('drive', (on) => (drive = on));
+      toggle('opps', (on) => (oppsOn = on));
+      $('flyby').addEventListener('click', () => (flyT = 0));
+
+      async function doInit() {
+        await audio.init();
+        const g = audio._graph;
+        if (g && !analyser) {
+          const ctx = audio.context;
+          analyser = ctx.createAnalyser();
+          analyser.fftSize = 8192;
+          analyser.smoothingTimeConstant = 0.6;
+          g.safety.connect(analyser);
+        }
+        $('status').textContent = `ctx ${audio.context.state} · ${audio.context.sampleRate} Hz · engine: ${audio.engineKind}`;
+      }
+      $('init').addEventListener('click', doInit);
+
+      const actions = {
+        shiftUp: () => audio.playShift(true),
+        shiftDown: () => audio.playShift(false),
+        bov: () => audio.playBlowOff(1),
+        backfire: () => audio.playBackfire(),
+        impactL: () => audio.playImpact(0.3),
+        impactH: () => audio.playImpact(1),
+        scrape: () => { let n = 0; const id = setInterval(() => { audio.playScrape(0.8); if (++n > 90) clearInterval(id); }, 16); },
+        beep: () => audio.playBeep(false),
+        go: () => audio.playBeep(true),
+        hover: () => audio.playUI('hover'),
+        select: () => audio.playUI('select'),
+        lap: () => audio.playUI('lap'),
+        finish: () => audio.playUI('finish'),
+        thunder: () => audio.playThunder(),
+        siren: () => audio.playSiren(),
+      };
+      document.querySelectorAll('[data-a]').forEach((b) => b.addEventListener('click', () => actions[b.dataset.a]()));
+
+      // ---------------------------------------------------------------- simple drivetrain sim (bench only)
+      const keys = {};
+      addEventListener('keydown', (e) => (keys[e.code] = true));
+      addEventListener('keyup', (e) => (keys[e.code] = false));
+      const RATIOS = [3.1, 2.1, 1.56, 1.22, 0.99, 0.83];
+      const FINAL = 3.6, WR = 0.35, IDLE = 900, MAXR = 8000;
+      const sim = { v: 0, gear: 1, rpm: IDLE, thr: 0, shiftT: 0, nitro: false };
+      function stepSim(dt, thrIn, brake, nitro) {
+        const s = sim;
+        s.thr += (thrIn - s.thr) * Math.min(1, dt * 12);
+        const ratio = RATIOS[s.gear - 1] * FINAL;
+        const wheelRpm = (s.v / WR) * 60 / (2 * Math.PI);
+        let rpm = wheelRpm * ratio;
+        if (rpm < 1600) rpm = Math.max(rpm, IDLE + (2600 - IDLE) * s.thr); // clutch slip at launch
+        s.shiftT -= dt;
+        const torque = s.shiftT > 0 ? 0 : s.thr * (0.75 + 0.25 * Math.sin(Math.min(1, rpm / MAXR) * Math.PI)) * (nitro ? 1.4 : 1);
+        let acc = (torque * 520 * ratio) / (WR * 1450) - 0.4 - 0.00042 * s.v * s.v - brake * 9;
+        if (rpm >= MAXR) acc = Math.min(acc, 0);
+        s.v = Math.max(0, s.v + acc * dt);
+        if (rpm > 7600 && s.gear < 6 && s.shiftT <= 0) { s.gear++; s.shiftT = 0.12; audio.playShift(true); }
+        else if (rpm < 3000 && s.gear > 1 && s.shiftT <= 0 && s.v > 3) { s.gear--; s.shiftT = 0.1; audio.playShift(false); }
+        s.rpm += (rpm - s.rpm) * Math.min(1, dt * 20);
+        if (s.rpm > MAXR) s.rpm = MAXR - 150 * Math.random();
+        return s;
+      }
+
+      // ---------------------------------------------------------------- live loop
+      let last = performance.now(), sweepT = 0;
+      function frame() {
+        const t = performance.now();
+        const dt = Math.min(0.05, (t - last) / 1000);
+        last = t;
+        let rpm = ctl.rpm, thr = ctl.thr, load = ctl.load, gear = ctl.gear, spd = ctl.spd;
+        if (sweep) {
+          sweepT += dt;
+          const ph = (sweepT % 8) / 8;
+          rpm = ph < 0.6 ? 900 + 7100 * (ph / 0.6) : 8000 - 7100 * ((ph - 0.6) / 0.4);
+          thr = load = ph < 0.6 ? 1 : 0;
+        }
+        if (drive) {
+          const s = stepSim(dt, keys.KeyW || keys.ArrowUp ? 1 : 0, keys.KeyS || keys.ArrowDown ? 1 : 0, !!(keys.ShiftLeft || keys.ShiftRight));
+          rpm = s.rpm; thr = load = s.thr; gear = s.gear; spd = s.v * 3.6;
+          audio.setNitro(!!(keys.ShiftLeft || keys.ShiftRight));
+          audio.setSkid(keys.Space && s.v > 3 ? Math.min(1, s.v / 25) : 0);
+          audio.setWind(spd);
+        } else {
+          audio.setSkid(ctl.skid);
+          audio.setWind(ctl.wind || spd);
+        }
+        audio.setEngine({ rpm, maxRpm: 8000, throttle: thr, load, gear, speedKmh: spd });
+        const opps = [];
+        if (oppsOn) {
+          for (let i = 0; i < 4; i++) opps.push({ rpm: 5200 + 1500 * Math.sin(t / 900 + i * 2), throttle: 0.8, distance: 12 + i * 14 + 6 * Math.sin(t / 1300 + i), pan: Math.sin(t / 2000 + i * 1.6) });
+        }
+        if (flyT >= 0) {
+          flyT += dt;
+          const x = -60 + flyT * 45; // opponent passes us at 45 m/s relative, 3 m to the left
+          opps[0] = { rpm: 6800, throttle: 1, distance: Math.hypot(x, 3), pan: Math.max(-1, Math.min(1, -3 / Math.hypot(x, 3))) * 0.9 };
+          if (flyT > 3) flyT = -1;
+        }
+        audio.setOpponents(opps);
+        audio.update(dt);
+        drawLive(rpm, thr, gear, spd);
+        requestAnimationFrame(frame);
+      }
+      requestAnimationFrame(frame);
+
+      function drawLive(rpm, thr, gear, spd) {
+        const c = $('live');
+        const g = c.getContext('2d');
+        g.fillStyle = '#05060a';
+        g.fillRect(0, 0, c.width, c.height);
+        if (!analyser) return;
+        const sr = audio.context.sampleRate;
+        const n = analyser.frequencyBinCount;
+        const data = new Float32Array(n);
+        analyser.getFloatFrequencyData(data);
+        g.strokeStyle = '#00e5ff';
+        g.beginPath();
+        const fMin = 25, fMax = 16000;
+        for (let x = 0; x < c.width; x++) {
+          const f = fMin * Math.pow(fMax / fMin, x / c.width);
+          const b = Math.min(n - 1, Math.round((f / (sr / 2)) * n));
+          const db = data[b];
+          const y = c.height * (1 - (db + 120) / 110);
+          x ? g.lineTo(x, y) : g.moveTo(x, y);
+        }
+        g.stroke();
+        const ff = (rpm / 60) * 4;
+        const xf = (Math.log(ff / fMin) / Math.log(fMax / fMin)) * c.width;
+        g.strokeStyle = '#ff3b5c';
+        g.beginPath(); g.moveTo(xf, 0); g.lineTo(xf, c.height); g.stroke();
+        const td = new Float32Array(analyser.fftSize);
+        analyser.getFloatTimeDomainData(td);
+        let pk = 0, ss = 0;
+        for (const v of td) { pk = Math.max(pk, Math.abs(v)); ss += v * v; }
+        $('liveInfo').textContent = `rpm ${rpm.toFixed(0)}  f_fire ${ff.toFixed(1)} Hz  thr ${thr.toFixed(2)}  gear ${gear}  ${spd.toFixed(0)} km/h  ·  peak ${(20 * Math.log10(pk + 1e-9)).toFixed(1)} dBFS  rms ${(10 * Math.log10(ss / td.length + 1e-12)).toFixed(1)} dBFS`;
+      }
+
+      // ================================================================= offline analysis
+      function fft(re, im) {
+        const n = re.length;
+        for (let i = 1, j = 0; i < n; i++) {
+          let bit = n >> 1;
+          for (; j & bit; bit >>= 1) j ^= bit;
+          j ^= bit;
+          if (i < j) { let t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; }
+        }
+        for (let len = 2; len <= n; len <<= 1) {
+          const ang = (-2 * Math.PI) / len, wr = Math.cos(ang), wi = Math.sin(ang), h = len >> 1;
+          for (let i = 0; i < n; i += len) {
+            let cr = 1, ci = 0;
+            for (let j = 0; j < h; j++) {
+              const a = i + j, b = a + h;
+              const vr = re[b] * cr - im[b] * ci, vi = re[b] * ci + im[b] * cr;
+              re[b] = re[a] - vr; im[b] = im[a] - vi; re[a] += vr; im[a] += vi;
+              const t = cr * wr - ci * wi; ci = cr * wi + ci * wr; cr = t;
+            }
+          }
+        }
+      }
+      const hann = (N) => { const w = new Float64Array(N); for (let i = 0; i < N; i++) w[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (N - 1)); return w; };
+      function monoOf(buf) {
+        const L = buf.getChannelData(0), R = buf.numberOfChannels > 1 ? buf.getChannelData(1) : L;
+        const m = new Float32Array(L.length);
+        for (let i = 0; i < m.length; i++) m[i] = 0.5 * (L[i] + R[i]);
+        return m;
+      }
+      function levels(buf, t0 = 0, t1 = Infinity) {
+        const sr = buf.sampleRate, a = Math.floor(t0 * sr), b = Math.min(buf.length, Math.floor(t1 * sr));
+        let pk = 0, ss = 0, nan = 0, n = 0;
+        for (let c = 0; c < buf.numberOfChannels; c++) {
+          const d = buf.getChannelData(c);
+          for (let i = a; i < b; i++) { const v = d[i]; if (!(v === v)) { nan++; continue; } const av = Math.abs(v); if (av > pk) pk = av; ss += v * v; n++; }
+        }
+        return { peakDb: +(20 * Math.log10(pk + 1e-12)).toFixed(1), rmsDb: +(10 * Math.log10(ss / Math.max(1, n) + 1e-14)).toFixed(1), nan };
+      }
+      function psd(x, sr, t0, t1, N = 16384) {
+        const a = Math.floor(t0 * sr), b = Math.min(x.length, Math.floor(t1 * sr));
+        const w = hann(N), P = new Float64Array(N / 2);
+        let frames = 0;
+        for (let s = a; s + N <= b; s += N / 2) {
+          const re = new Float64Array(N), im = new Float64Array(N);
+          for (let i = 0; i < N; i++) re[i] = x[s + i] * w[i];
+          fft(re, im);
+          for (let k = 0; k < N / 2; k++) P[k] += re[k] * re[k] + im[k] * im[k];
+          frames++;
+        }
+        for (let k = 0; k < N / 2; k++) P[k] /= Math.max(1, frames);
+        return P;
+      }
+      function centroid(P, sr, N, mag = false) {
+        let num = 0, den = 0;
+        for (let k = 1; k < P.length; k++) { const f = (k * sr) / N; if (f < 20) continue; const w = mag ? Math.sqrt(P[k]) : P[k]; num += f * w; den += w; }
+        return num / (den || 1);
+      }
+      const bandDb = (P, sr, N, f0, f1) => { let s = 0; for (let k = Math.max(1, Math.floor((f0 * N) / sr)); k <= Math.min(P.length - 1, Math.ceil((f1 * N) / sr)); k++) s += P[k]; return 10 * Math.log10(s + 1e-20); };
+      function peakNear(P, sr, N, f, tol = 0.04) {
+        const k0 = Math.max(1, Math.floor(((f * (1 - tol)) * N) / sr)), k1 = Math.ceil(((f * (1 + tol)) * N) / sr);
+        let kb = k0;
+        for (let k = k0; k <= k1; k++) if (P[k] > P[kb]) kb = k;
+        // prominence vs median of the surrounding +-35 % band
+        const a = Math.floor(((f * 0.65) * N) / sr), b = Math.ceil(((f * 1.35) * N) / sr);
+        const arr = [];
+        for (let k = a; k <= b; k++) arr.push(P[k]);
+        arr.sort((x, y) => x - y);
+        const med = arr[arr.length >> 1] || 1e-20;
+        return { f: +((kb * sr) / N).toFixed(1), promDb: +(10 * Math.log10(P[kb] / med)).toFixed(1) };
+      }
+      // Harmonic-sum pitch estimate in [fLo, fHi] (sum of log-power at the first 6 harmonics).
+      function hps(P, sr, N, fLo, fHi) {
+        let best = 0, bestF = 0;
+        for (let f = fLo; f <= fHi; f *= 1.002) {
+          let s = 0;
+          for (let h = 1; h <= 6; h++) { const k = Math.round((f * h * N) / sr); if (k >= P.length) break; s += Math.log10(Math.max(P[k - 1], P[k], P[k + 1]) + 1e-20); }
+          if (s > best || !bestF) { best = s; bestF = f; }
+        }
+        return +bestF.toFixed(1);
+      }
+      // Click detector: 2.5 ms windows of first-difference energy vs local median (+-100 ms).
+      function clicks(x, sr, t0 = 0, t1 = Infinity) {
+        const W = Math.floor(sr * 0.0025), a = Math.floor(t0 * sr), b = Math.min(x.length, Math.floor(t1 * sr));
+        const e = [];
+        for (let s = a + 1; s + W < b; s += W) { let sum = 0; for (let i = s; i < s + W; i++) { const d = x[i] - x[i - 1]; sum += d * d; } e.push(sum / W); }
+        const R = 40, hits = [];
+        for (let i = R; i < e.length - R; i++) {
+          const loc = e.slice(i - R, i + R).sort((p, q) => p - q)[R];
+          if (e[i] > loc * 30 && e[i] > 1e-6) hits.push(+((a + i * W) / sr).toFixed(3));
+        }
+        return hits;
+      }
+      function color(v) { // v 0..1 -> magma-ish
+        const r = Math.min(255, Math.max(0, 255 * Math.min(1, v * 1.6)));
+        const gg = Math.min(255, Math.max(0, 255 * (v - 0.35) * 1.6));
+        const b = Math.min(255, Math.max(0, 255 * (v < 0.4 ? v * 1.8 : 0.72 - (v - 0.4) * 0.8 + Math.max(0, v - 0.85) * 4)));
+        return [r, gg, b];
+      }
+      function spectrogram(canvas, x, sr, { N = 4096, fMin = 25, fMax = 14000, dbMin = -100, dbMax = -20, marks = [], x0 = 0, width = 0, label = '' } = {}) {
+        const g = canvas.getContext('2d');
+        const W = width || canvas.width, H = canvas.height;
+        const img = g.createImageData(W, H);
+        const w = hann(N);
+        const hop = Math.max(1, Math.floor((x.length - N) / W));
+        for (let col = 0; col < W; col++) {
+          const s = col * hop;
+          const re = new Float64Array(N), im = new Float64Array(N);
+          for (let i = 0; i < N; i++) re[i] = (x[s + i] || 0) * w[i];
+          fft(re, im);
+          for (let row = 0; row < H; row++) {
+            const f = fMin * Math.pow(fMax / fMin, 1 - row / H);
+            const k = Math.min(N / 2 - 1, Math.max(1, Math.round((f * N) / sr)));
+            const p = (re[k] * re[k] + im[k] * im[k]) / (N * N * 0.25);
+            const db = 10 * Math.log10(p + 1e-20);
+            const v = Math.min(1, Math.max(0, (db - dbMin) / (dbMax - dbMin)));
+            const [r, gg, b] = color(v);
+            const o = (row * W + col) * 4;
+            img.data[o] = r; img.data[o + 1] = gg; img.data[o + 2] = b; img.data[o + 3] = 255;
+          }
+        }
+        g.putImageData(img, x0, 0);
+        g.fillStyle = 'rgba(255,255,255,0.55)';
+        g.font = '10px monospace';
+        if (label) {
+          g.fillStyle = 'rgba(0,229,255,0.9)';
+          g.save(); g.translate(x0 + 3, H - 4); g.rotate(-Math.PI / 2); g.fillText(label, 0, 8); g.restore();
+          g.fillStyle = 'rgba(255,255,255,0.25)'; g.fillRect(x0, 0, 1, H);
+          return;
+        }
+        for (const f of [50, 100, 200, 500, 1000, 2000, 5000, 10000]) {
+          const y = H * (1 - Math.log(f / fMin) / Math.log(fMax / fMin));
+          g.fillRect(0, y, 6, 1);
+          g.fillText(f >= 1000 ? f / 1000 + 'k' : f, 8, y + 3);
+        }
+        const dur = x.length / sr;
+        for (const m of marks) {
+          const xx = (m.t / dur) * W;
+          g.fillStyle = 'rgba(0,229,255,0.8)';
+          g.fillRect(xx, 0, 1, 8);
+          g.fillText(m.label, xx + 2, 18 + (m.row || 0) * 10);
+        }
+      }
+
+      async function renderOffline(seconds, setup, onStep, stepHz = 60, sr = 48000) {
+        const ctx = new OfflineAudioContext(2, Math.ceil(seconds * sr), sr);
+        const a = createAudio({ context: ctx });
+        await a.init();
+        if (setup) await setup(a, ctx);
+        if (onStep) {
+          const dt = 1 / stepHz;
+          for (let i = 1; i * dt < seconds - 0.01; i++) {
+            const t = i * dt;
+            ctx.suspend(t).then(() => { try { onStep(a, t, dt); } catch (e) { console.error(e); } ctx.resume(); });
+          }
+        }
+        const t0 = performance.now();
+        const buf = await ctx.startRendering();
+        return { buf, ms: performance.now() - t0, kind: a.engineKind };
+      }
+      const silenceLive = (a) => { a._graph.live.gain.value = 0; };
+
+      // Resumable stages: Vite full-reloads every page when another agent saves index.html, so each
+      // stage checkpoints its results + canvas images into sessionStorage (keyed by ?autotest=<id>).
+      const RUN_ID = new URLSearchParams(location.search).get('autotest') || 'manual-' + Date.now();
+      const KEY = 'audioBench:' + RUN_ID;
+      const CANVASES = ['specDrive', 'specPts', 'wave', 'specSfx'];
+      function loadCk() { try { return JSON.parse(sessionStorage.getItem(KEY) || 'null'); } catch (e) { return null; } }
+      function restoreImgs(imgs) {
+        for (const id of CANVASES) {
+          if (!imgs[id]) continue;
+          const im = new Image();
+          im.onload = () => $(id).getContext('2d').drawImage(im, 0, 0);
+          im.src = imgs[id];
+        }
+      }
+      async function runTests() {
+        $('status').textContent = 'running offline analysis…';
+        const ck = loadCk() || { done: {}, out: null, imgs: {} };
+        const out = ck.out || { engine: [], sfx: [], drive: null, opp: null, perf: {} };
+        restoreImgs(ck.imgs);
+        const stage = async (name, fn) => {
+          if (ck.done[name]) { console.log('[bench] stage ' + name + ' restored'); return; }
+          await fn();
+          ck.done[name] = true;
+          ck.out = out;
+          for (const id of CANVASES) ck.imgs[id] = $(id).toDataURL('image/jpeg', 0.9);
+          try { sessionStorage.setItem(KEY, JSON.stringify(ck)); } catch (e) { console.warn('checkpoint failed', e.message); }
+          console.log('[bench] stage ' + name + ' done');
+        };
+        const sr = 48000, N = 16384;
+        await stage('engine', async () => {
+        // ---- engine operating points
+        const pts = [[900, 0], [1500, 0.2], [2500, 0.6], [3500, 1], [5000, 1], [6500, 1], [7800, 1], [7000, 0], [4000, 0], [8000, 1]];
+        const spectra = [];
+        const waves = [];
+        out.engine = [];
+        for (const [rpm, thr] of pts) {
+          const { buf, ms, kind } = await renderOffline(1.6, (a) => a.setEngine({ rpm, maxRpm: 8000, throttle: thr, load: thr, gear: 3, speedKmh: 120 }));
+          const x = monoOf(buf);
+          const P = psd(x, sr, 0.45, 1.6, N);
+          const ff = (rpm / 60) * 4;
+          const lv = levels(buf, 0.45, 1.6);
+          const row = { rpm, thr, fFire: +ff.toFixed(1), ...lv, centroid: Math.round(centroid(P, sr, N)), centroidMag: Math.round(centroid(P, sr, N, true)), fire: peakNear(P, sr, N, ff), half: peakNear(P, sr, N, ff / 2), hps: hps(P, sr, N, ff * 0.4, ff * 1.3), lowDb: +bandDb(P, sr, N, 20, 300).toFixed(1), midDb: +bandDb(P, sr, N, 300, 2000).toFixed(1), highDb: +bandDb(P, sr, N, 2000, 12000).toFixed(1), kind, rtFactor: +(ms / 1600).toFixed(3) };
+          out.engine.push(row);
+          spectra.push({ P, label: `${rpm}/${thr}` });
+          if ((rpm === 900 && thr === 0) || (rpm === 3500 && thr === 1) || (rpm === 6500 && thr === 1) || (rpm === 7000 && thr === 0) || rpm === 8000) waves.push({ x: x.slice(Math.floor(1.0 * sr), Math.floor(1.04 * sr)), label: `${rpm}/${thr}` });
+        }
+        console.log('[bench] engine points done');
+        drawSpectra($('specPts'), spectra, sr, N);
+        drawWaves($('wave'), waves);
+        // centroid monotonic with rpm at full throttle
+        const ft = out.engine.filter((r) => r.thr === 1 && r.rpm < 8000);
+        out.centroidRisesWithRpm = ft.every((r, i) => i === 0 || r.centroid > ft[i - 1].centroid);
+        out.centroidMagRisesWithRpm = ft.every((r, i) => i === 0 || r.centroidMag > ft[i - 1].centroidMag);
+        });
+
+        await stage('drive', async () => {
+        // ---- drive run: accel through gears, lift (overrun crackle + BOV), idle; full system w/ wind+skid blip
+        {
+          const marks = [];
+          const s = { v: 0, gear: 1, rpm: 900, thr: 0, shiftT: 0 };
+          const driveStep = (a, t, dt) => {
+            const thrIn = t > 0.5 && t < 8.6 ? 1 : 0;
+            s.thr += (thrIn - s.thr) * Math.min(1, dt * 12);
+            const ratio = RATIOS[s.gear - 1] * FINAL;
+            let rpm = ((s.v / WR) * 60 / (2 * Math.PI)) * ratio;
+            if (rpm < 1600) rpm = Math.max(rpm, 900 + 1700 * s.thr);
+            s.shiftT -= dt;
+            const torque = s.shiftT > 0 ? 0 : s.thr;
+            let acc = (torque * 520 * ratio) / (WR * 1450) - 0.4 - 0.00042 * s.v * s.v - (t > 10.5 ? 6 : 0);
+            s.v = Math.max(0, s.v + acc * dt);
+            if (rpm > 7600 && s.gear < 6 && s.shiftT <= 0) { s.gear++; s.shiftT = 0.12; a.playShift(true); marks.push({ t, label: '↑' + s.gear }); }
+            else if (rpm < 2600 && s.gear > 1 && s.shiftT <= 0 && s.v > 3) { s.gear--; s.shiftT = 0.1; a.playShift(false); marks.push({ t, label: '↓' + s.gear, row: 1 }); }
+            s.rpm += (rpm - s.rpm) * Math.min(1, dt * 20);
+            a.setEngine({ rpm: s.rpm, maxRpm: 8000, throttle: s.thr, load: s.thr, gear: s.gear, speedKmh: s.v * 3.6 });
+            a.setWind(s.v * 3.6);
+            a.setSkid(t > 11 && t < 11.8 ? 0.8 : 0);
+            a.update(dt);
+          };
+          console.log('[bench] drive run start');
+          const { buf, ms } = await renderOffline(13, (a) => a.setEngine({ rpm: 900, maxRpm: 8000, throttle: 0, load: 0, gear: 1, speedKmh: 0 }), driveStep);
+          console.log('[bench] drive run 1 done ' + ms.toFixed(0) + 'ms');
+          const x = monoOf(buf);
+          Object.assign(s, { v: 0, gear: 1, rpm: 900, thr: 0, shiftT: 0 });
+          const marks2 = marks.length;
+          const eo = await renderOffline(13, (a) => { a._graph.env.gain.value = 0; a._graph.verbReturn.gain.value = 0; a.setEngine({ rpm: 900, maxRpm: 8000, throttle: 0, load: 0, gear: 1, speedKmh: 0 }); }, driveStep);
+          marks.length = marks2;
+          const engineOnlyClicks = clicks(monoOf(eo.buf), sr, 0.2, 13);
+          marks.push({ t: 8.6, label: 'lift', row: 2 }, { t: 11, label: 'skid', row: 2 });
+          spectrogram($('specDrive'), x, sr, { marks });
+          out.drive = { ...levels(buf), clicks: clicks(x, sr, 0.2, 13), engineOnlyClicks, rtFactor: +(ms / 13000).toFixed(3), shifts: marks.filter((m) => m.label[0] === '↑' || m.label[0] === '↓').map((m) => m.label + '@' + m.t.toFixed(2)).join(' ') };
+          window.__driveBuf = buf;
+        }
+        });
+
+        // ---- SFX (engine + continuous layers silenced unless relevant); one checkpointed stage each
+        const sfx = [
+          ['impact 1.0', 2.0, (a) => { silenceLive(a); a.playImpact(1); }],
+          ['impact 0.3', 1.5, (a) => { silenceLive(a); a.playImpact(0.3); }],
+          ['backfire', 1.5, (a) => { silenceLive(a); a.playBackfire(); }],
+          ['shift up (load)', 1.5, (a) => { a._graph.eng.gain.value = 0; a.setEngine({ rpm: 7000, maxRpm: 8000, throttle: 1, load: 1 }); a.playShift(true); }],
+          ['shift down', 1.0, (a) => { silenceLive(a); a.playShift(false); }],
+          ['blow-off', 1.5, (a) => { silenceLive(a); a.playBlowOff(1); }],
+          ['beep', 1.0, (a) => { silenceLive(a); a.playBeep(false); }],
+          ['beep GO', 1.5, (a) => { silenceLive(a); a.playBeep(true); }],
+          ['ui hover', 0.6, (a) => { silenceLive(a); a.playUI('hover'); }],
+          ['ui select', 0.8, (a) => { silenceLive(a); a.playUI('select'); }],
+          ['ui lap', 1.5, (a) => { silenceLive(a); a.playUI('lap'); }],
+          ['ui finish', 3.5, (a) => { silenceLive(a); a.playUI('finish'); }],
+          ['thunder (+amb)', 7.0, (a) => { silenceLive(a); a._graph.amb.gain.value = 0.7; a.playThunder(); }],
+          ['distant siren', 8.0, (a) => { silenceLive(a); a._graph.amb.gain.value = 0.7; a.playSiren(); }],
+          ['music B (arp)', 12, (a) => { silenceLive(a); a._graph.music.setLevel(0.075); a._graph.music.start(8); a._pumpMusic(12); }],
+          ['music break+build', 16, (a) => { silenceLive(a); a._graph.music.setLevel(0.075); a._graph.music.start(16); a._pumpMusic(16); }],
+          ['music B2', 10, (a) => { silenceLive(a); a._graph.music.setLevel(0.075); a._graph.music.start(24); a._pumpMusic(10); }],
+          ['nitro on', 2.0, (a) => { a._graph.eng.gain.value = 0; a.setNitro(true); }],
+          ['skid 1.0', 2.0, (a) => { a._graph.eng.gain.value = 0; a.setSkid(1); }],
+          ['skid 0.4', 2.0, (a) => { a._graph.eng.gain.value = 0; a.setSkid(0.4); }],
+          ['wind 280', 2.0, (a) => { a._graph.eng.gain.value = 0; a.setWind(280); }],
+          ['wind 80', 2.0, (a) => { a._graph.eng.gain.value = 0; a.setWind(80); }],
+          ['ambience', 5.0, (a) => { silenceLive(a); a.setAmbience(true); }],
+          ['music A', 8.5, (a) => { silenceLive(a); a.setMusic(true); a._pumpMusic(8.4); }],
+          ['opponents x4 near', 2.0, (a) => { a._graph.eng.gain.value = 0; }, (a) => a.setOpponents([0, 1, 2, 3].map((i) => ({ rpm: 4500 + i * 900, throttle: 0.9, distance: 8 + i * 6, pan: -0.8 + i * 0.5 })))],
+          ['opponent 1 @ 10m', 2.0, (a) => { a._graph.eng.gain.value = 0; }, (a) => a.setOpponents([{ rpm: 6000, throttle: 1, distance: 10, pan: 0.3 }])],
+          ['opponent 1 @ 120m', 2.0, (a) => { a._graph.eng.gain.value = 0; }, (a) => a.setOpponents([{ rpm: 6000, throttle: 1, distance: 120, pan: 0.3 }])],
+        ];
+        const extra = [
+          ['RACE MIX', 4.0, (a) => { a.setAmbience(true); a.setMusic(true); a._pumpMusic(4); a.setWind(210); }, (a, t) => {
+            a.setEngine({ rpm: 5200 + 1600 * Math.sin(t * 1.3), maxRpm: 8000, throttle: 1, load: 1, gear: 4, speedKmh: 210 });
+            a.setOpponents([0, 1, 2, 3].map((i) => ({ rpm: 5500 + i * 400, throttle: 1, distance: 9 + i * 12, pan: -0.6 + i * 0.4 })));
+            a.setSkid(t > 2.5 && t < 3.5 ? 0.7 : 0);
+            a.update(1 / 60);
+          }],
+          ['scrape (continuous)', 2.0, (a) => silenceLive(a), (a, t) => { a._graph.live.gain.value = 1; a._graph.eng.gain.value = 0; if (t < 1.2) a.playScrape(0.5 + 0.5 * Math.sin(t * 9) ** 2); a.update(1 / 60); }],
+          ['opp fly-by', 3.0, (a) => { a._graph.eng.gain.value = 0; }, (a, t) => { const xx = -60 + t * 45; const d = Math.hypot(xx, 3); a.setOpponents([{ rpm: 6000, throttle: 1, distance: d, pan: Math.max(-1, Math.min(1, xx / d)) }]); }],
+        ];
+        const all = sfx.concat(extra);
+        const slotW = Math.floor($('specSfx').width / all.length);
+        for (let si = 0; si < all.length; si++) {
+          const [name, dur, setup, step] = all[si];
+          await stage('sfx:' + name, async () => {
+            const { buf, ms } = await renderOffline(dur, setup, step || null, step ? 60 : 30);
+            console.log('[bench] sfx ' + name + ' ' + ms.toFixed(0) + 'ms');
+            const x = monoOf(buf);
+            const P = psd(x, sr, 0, dur, 4096);
+            const lv = levels(buf, 0, dur);
+            const row = { name, ...lv, centroid: Math.round(centroid(P, sr, 4096)), silent: lv.rmsDb < -60, clip: lv.peakDb > -1, rtFactor: +(ms / (dur * 1000)).toFixed(3) };
+            if (name.startsWith('scrape')) row.releasedRmsDb = levels(buf, 1.6, 2.0).rmsDb;
+            if (name === 'opp fly-by') {
+              const Pa = psd(x, sr, 0.3, 1.1, 16384), Pb = psd(x, sr, 1.8, 2.6, 16384);
+              const f0 = (6000 / 60) * 4;
+              out.opp = { approach: hps(Pa, sr, 16384, f0 * 0.85, f0 * 1.25), recede: hps(Pb, sr, 16384, f0 * 0.75, f0 * 1.15), expectedApproach: +(f0 * 343 / (343 - 45 * 0.99)).toFixed(1), expectedRecede: +(f0 * 343 / (343 + 45 * 0.99)).toFixed(1), ...lv };
+            }
+            out.sfx = (out.sfx || []).filter((r) => r.name !== name).concat([row]);
+            const show = name.startsWith('music') ? 8 : Math.min(dur, 2.0);
+            spectrogram($('specSfx'), x.subarray(0, Math.floor(show * sr)), sr, { N: 2048, x0: si * slotW, width: slotW, label: name });
+          });
+        }
+        // ---- perf: engine worklet alone vs whole system
+        await stage('perf', async () => {
+          const { loadEngineWorklet } = await import('../src/audio/engineWorklet.js');
+          const secs = 6;
+          const c1 = new OfflineAudioContext(2, secs * sr, sr);
+          await loadEngineWorklet(c1);
+          const n1 = new AudioWorkletNode(c1, 'apex-engine', { numberOfInputs: 0, outputChannelCount: [2] });
+          n1.parameters.get('rpm').value = 6000; n1.parameters.get('throttle').value = 1; n1.parameters.get('load').value = 1;
+          n1.connect(c1.destination);
+          let t0 = performance.now(); await c1.startRendering(); const engMs = performance.now() - t0;
+          const c2 = new OfflineAudioContext(2, secs * sr, sr);
+          await loadEngineWorklet(c2);
+          const n2 = new AudioWorkletNode(c2, 'apex-opponents', { numberOfInputs: 0, outputChannelCount: [2] });
+          n2.port.postMessage(new Float32Array([5000, 1, 1, 0, 8000, 6000, 1, 1, 0.5, 8000, 4000, 1, 1, -0.5, 8000, 7000, 1, 1, 0.2, 8000]));
+          n2.connect(c2.destination);
+          t0 = performance.now(); await c2.startRendering(); const oppMs = performance.now() - t0;
+          const full = await renderOffline(secs, (a) => { a.setEngine({ rpm: 6000, maxRpm: 8000, throttle: 1, load: 1 }); a.setAmbience(true); a.setWind(200); a.setSkid(0.5); });
+          const { makeStreetIR, makeNoiseBuffer } = await import('../src/audio/dsp.js');
+          const c3 = new OfflineAudioContext(2, secs * sr, sr);
+          const cv = c3.createConvolver(); cv.buffer = makeStreetIR(c3, 1.4, 23);
+          const ns = c3.createBufferSource(); ns.buffer = makeNoiseBuffer(c3, 2, 1, 5); ns.loop = true; ns.connect(cv).connect(c3.destination); ns.start();
+          t0 = performance.now(); await c3.startRendering(); const convMs = performance.now() - t0;
+          const idle = await renderOffline(secs, (a) => { a._graph.live.gain.value = 0; });
+          out.perf = { convolverRT: +(convMs / (secs * 1000)).toFixed(4), idleSystemRT: +(idle.ms / (secs * 1000)).toFixed(4), engineWorkletRT: +(engMs / (secs * 1000)).toFixed(4), opponentsWorkletRT: +(oppMs / (secs * 1000)).toFixed(4), fullSystemRT: +(full.ms / (secs * 1000)).toFixed(4) };
+        });
+        out.allFinite = out.engine.every((r) => r.nan === 0) && out.sfx.every((r) => r.nan === 0) && out.drive.nan === 0;
+        out.maxPeakDb = Math.max(...out.engine.map((r) => r.peakDb), ...out.sfx.map((r) => r.peakDb), out.drive.peakDb);
+        renderTable(out);
+        $('status').textContent = 'analysis done';
+        window.__audioResult = out;
+        return out;
+      }
+      function drawWaves(canvas, waves) {
+        const g = canvas.getContext('2d');
+        const W = canvas.width, H = canvas.height, h = H / waves.length;
+        g.fillStyle = '#05060a'; g.fillRect(0, 0, W, H);
+        waves.forEach((w, i) => {
+          let pk = 1e-9; for (const v of w.x) pk = Math.max(pk, Math.abs(v));
+          g.strokeStyle = `hsl(${i * 70}, 90%, 60%)`;
+          g.beginPath();
+          for (let k = 0; k < w.x.length; k++) { const xx = (k / w.x.length) * W, yy = h * i + h / 2 - (w.x[k] / pk) * h * 0.45; k ? g.lineTo(xx, yy) : g.moveTo(xx, yy); }
+          g.stroke();
+          g.fillStyle = g.strokeStyle; g.font = '10px monospace'; g.fillText(w.label + ' pk ' + (20 * Math.log10(pk)).toFixed(1) + ' dB', 4, h * i + 11);
+        });
+      }
+      function drawSpectra(canvas, spectra, sr, N) {
+        const g = canvas.getContext('2d');
+        const W = canvas.width, H = canvas.height, fMin = 25, fMax = 14000;
+        g.fillStyle = '#05060a'; g.fillRect(0, 0, W, H);
+        spectra.forEach((s, i) => {
+          g.strokeStyle = `hsl(${(i / spectra.length) * 300}, 90%, 60%)`;
+          g.beginPath();
+          for (let x = 0; x < W; x++) {
+            const f = fMin * Math.pow(fMax / fMin, x / W);
+            const k = Math.round((f * N) / sr);
+            let p = 0; const r = Math.max(1, Math.round(k * 0.01)); for (let j = k - r; j <= k + r; j++) p = Math.max(p, s.P[j] || 0);
+            const db = 10 * Math.log10(p / (N * N * 0.25) + 1e-20);
+            const y = H * (1 - (db + 120) / 100);
+            x ? g.lineTo(x, y) : g.moveTo(x, y);
+          }
+          g.stroke();
+          g.fillStyle = g.strokeStyle; g.font = '10px monospace'; g.fillText(s.label, W - 70, 12 + i * 11);
+        });
+      }
+      function renderTable(out) {
+        const e = out.engine.map((r) => `<tr><td>${r.rpm} / ${r.thr}</td><td>${r.fFire}</td><td>${r.fire.f} (${r.fire.promDb} dB)</td><td>${r.half.f} (${r.half.promDb})</td><td>${r.hps}</td><td>${r.centroid} / ${r.centroidMag}</td><td>${r.lowDb}/${r.midDb}/${r.highDb}</td><td class="${r.peakDb > -1 ? 'bad' : ''}">${r.peakDb}</td><td>${r.rmsDb}</td><td class="${r.nan ? 'bad' : ''}">${r.nan}</td></tr>`).join('');
+        const s = out.sfx.map((r) => `<tr><td>${r.name}</td><td class="${r.clip ? 'bad' : ''}">${r.peakDb}</td><td class="${r.silent ? 'bad' : ''}">${r.rmsDb}</td><td>${r.centroid}</td><td class="${r.nan ? 'bad' : ''}">${r.nan}</td><td>${r.releasedRmsDb ?? ''}</td></tr>`).join('');
+        $('results').innerHTML = `
+          <table><tr><th>engine rpm/thr</th><th>f_fire</th><th>peak@f_fire (prom)</th><th>@f/2</th><th>pitch est</th><th>centroid pow/mag</th><th>low/mid/high dB</th><th>peak dBFS</th><th>rms</th><th>NaN</th></tr>${e}</table>
+          <div class="caption">centroid rises with rpm (full throttle) power: <b class="${out.centroidRisesWithRpm ? 'good' : 'bad'}">${out.centroidRisesWithRpm}</b> magnitude: <b class="${out.centroidMagRisesWithRpm ? 'good' : 'bad'}">${out.centroidMagRisesWithRpm}</b> · all finite: <b class="${out.allFinite ? 'good' : 'bad'}">${out.allFinite}</b> · max peak ${out.maxPeakDb} dBFS · drive run: peak ${out.drive.peakDb} rms ${out.drive.rmsDb} clicks [${out.drive.clicks.join(', ')}] engine-only clicks [${out.drive.engineOnlyClicks.join(', ')}] · RT factor (whole system offline) ${out.drive.rtFactor}</div>
+          <div class="caption">perf (offline render time / audio time, 1 core): convolver ${out.perf.convolverRT} · idle system ${out.perf.idleSystemRT} · engine worklet ${out.perf.engineWorkletRT} · opponents worklet ${out.perf.opponentsWorkletRT} · full system ${out.perf.fullSystemRT}</div>
+          <div class="caption">opp fly-by pitch: approach ${out.opp.approach} Hz (exp ${out.opp.expectedApproach}) · recede ${out.opp.recede} Hz (exp ${out.opp.expectedRecede})</div>
+          <table style="margin-top:6px"><tr><th>sfx</th><th>peak dBFS</th><th>rms dBFS</th><th>centroid</th><th>NaN</th><th>released</th></tr>${s}</table>`;
+      }
+      // Robustness: every method before init / with junk args / without WebAudio must not throw.
+      window.__robustTest = async () => {
+        const errs = [];
+        const junk = [undefined, null, NaN, Infinity, -1, 'x', {}, [], { rpm: NaN, throttle: 'a' }];
+        const callAll = (a, tag) => {
+          const calls = [
+            ['setEngine', [{ rpm: NaN, maxRpm: 0, throttle: Infinity, load: -3, gear: 'x', speedKmh: null }]], ['setEngine', []], ['setOpponents', [null]], ['setOpponents', [[null, { rpm: 'a', distance: -5, pan: 9 }, {}]]],
+            ['setSkid', [NaN]], ['setNitro', [{}]], ['setWind', [undefined]], ['playShift', ['up']], ['playBackfire', []], ['playImpact', [NaN]], ['playScrape', [Infinity]],
+            ['playBeep', [1]], ['playUI', ['nope']], ['playUI', ['finish']], ['setAmbience', [1]], ['setMusic', [0]], ['setMasterVolume', [NaN]], ['toggleMute', []], ['toggleMute', []], ['update', [NaN]], ['update', [1e9]],
+          ];
+          for (const [m, args] of calls) {
+            try { a[m](...args); } catch (e) { errs.push(`${tag}.${m}: ${e.message}`); }
+            for (const j of junk) { try { a[m](j); } catch (e) { errs.push(`${tag}.${m}(${String(j)}): ${e.message}`); } }
+          }
+        };
+        const pre = createAudio();
+        callAll(pre, 'preInit');
+        const AC = window.AudioContext, WAC = window.webkitAudioContext;
+        let noWaRes;
+        try {
+          window.AudioContext = undefined; window.webkitAudioContext = undefined;
+          const nw = createAudio();
+          noWaRes = await nw.init();
+          callAll(nw, 'noWebAudio');
+        } finally { window.AudioContext = AC; window.webkitAudioContext = WAC; }
+        // post-init with junk, offline (no output)
+        const ctx = new OfflineAudioContext(2, 48000, 48000);
+        const po = createAudio({ context: ctx });
+        await po.init();
+        callAll(po, 'postInit');
+        const buf = await ctx.startRendering();
+        const lv = levels(buf);
+        return { errs, noWebAudioInit: noWaRes, postInitJunkRender: lv };
+      };
+      // Main-thread cost of a typical per-frame call set (ms per frame).
+      window.__frameCost = () => {
+        const a = window.__audio;
+        const opps = [0, 1, 2, 3].map((i) => ({ rpm: 5000, throttle: 1, distance: 20 + i * 10, pan: 0.2 * i - 0.3 }));
+        const n = 3000;
+        const t0 = performance.now();
+        for (let i = 0; i < n; i++) {
+          a.setEngine({ rpm: 3000 + (i % 100) * 40, maxRpm: 8000, throttle: (i % 7) / 7, load: 0.5, gear: 3, speedKmh: 150 + (i % 13) });
+          opps[0].distance = 20 + (i % 30);
+          a.setOpponents(opps);
+          a.setSkid((i % 10) / 10);
+          a.setWind(150 + (i % 50));
+          if (i % 40 === 0) a.playScrape(0.5);
+          a.update(1 / 60);
+        }
+        return +((performance.now() - t0) / n).toFixed(4);
+      };
+      window.__bench = { renderOffline, monoOf, clicks, levels };
+      // Opponent list re-ordering must not swap voices between cars.
+      window.__swapCheck = async () => {
+        const sr = 48000;
+        const A = { rpm: 4000, throttle: 1, distance: 15, pan: -0.9 }, B = { rpm: 7000, throttle: 1, distance: 18, pan: 0.9 };
+        const { buf } = await renderOffline(3.0, (a) => { a._graph.eng.gain.value = 0; a._graph.verbReturn.gain.value = 0; }, (a, t) => {
+          a.setOpponents(Math.floor(t / 0.25) % 2 ? [B, A] : [A, B]);
+        });
+        const L = buf.getChannelData(0), R = buf.getChannelData(1);
+        const fa = (4000 / 60) * 4, fb = (7000 / 60) * 4;
+        const rows = [];
+        for (let w = 0.5; w + 0.25 <= 3.0; w += 0.25) {
+          const N = 8192;
+          const pl = psd(L, sr, w, w + 0.25 + 0.0001, N), pr = psd(R, sr, w, w + 0.25 + 0.0001, N);
+          const near = (P, f) => { const k = Math.round((f * N) / sr); return Math.max(P[k - 1], P[k], P[k + 1]); };
+          rows.push(+(10 * Math.log10(near(pl, fa) / near(pl, fb))).toFixed(1));
+        }
+        return { leftChannel_dB_carA_over_carB_per_window: rows, minRatio: Math.min(...rows) };
+      };
+      // Native fallback engine (no AudioWorklet) sanity check.
+      window.__nativeCheck = async () => {
+        const res = [];
+        for (const [rpm, thr] of [[900, 0], [4000, 1], [7000, 1], [6000, 0]]) {
+          const ctx = new OfflineAudioContext(2, 48000, 48000);
+          const a = createAudio({ context: ctx, forceNative: true });
+          await a.init();
+          a.setEngine({ rpm, maxRpm: 8000, throttle: thr, load: thr });
+          a.setOpponents([{ rpm: 5000, throttle: 1, distance: 10, pan: 0.5 }]);
+          a.playShift(true);
+          const buf = await ctx.startRendering();
+          res.push({ rpm, thr, kind: a.engineKind, ...levels(buf, 0.3, 1) });
+        }
+        return res;
+      };
+      // Onset check: max sample step around a 0->1 throttle step vs during steady WOT.
+      window.__onsetCheck = async () => {
+        const sr = 48000;
+        const { buf } = await renderOffline(2.0, (a) => a.setEngine({ rpm: 900, maxRpm: 8000, throttle: 0 }), (a, t) => {
+          const on = t >= 0.5;
+          a.setEngine({ rpm: on ? Math.min(6000, 900 + (t - 0.5) * 6000) : 900, maxRpm: 8000, throttle: on ? 1 : 0, load: on ? 1 : 0 });
+          a.update(1 / 60);
+        });
+        const x = monoOf(buf);
+        const maxStep = (a, b) => { let m = 0; for (let i = Math.floor(a * sr) + 1; i < Math.floor(b * sr); i++) m = Math.max(m, Math.abs(x[i] - x[i - 1])); return +m.toFixed(4); };
+        const maxAbs = (a, b) => { let m = 0; for (let i = Math.floor(a * sr); i < Math.floor(b * sr); i++) m = Math.max(m, Math.abs(x[i])); return +m.toFixed(4); };
+        return { stepAtOnset: maxStep(0.49, 0.56), stepSteadyWot: maxStep(1.4, 1.9), peakOnset: maxAbs(0.49, 0.56), peakWot: maxAbs(1.4, 1.9), clicks: clicks(x, sr, 0.1, 1.95) };
+      };
+      $('runTests').addEventListener('click', () => runTests().catch((e) => { console.error(e); $('status').textContent = 'error: ' + e.message; }));
+      window.__audioTest = () => runTests().catch((e) => { console.error(e); window.__audioResult = { error: e.message, stack: e.stack }; });
+      if (new URLSearchParams(location.search).get('autotest')) {
+        console.log('[bench] autotest start');
+        const t0 = performance.now();
+        window.__audioTest().then(() => console.log('[bench] autotest done in ' + ((performance.now() - t0) / 1000).toFixed(1) + 's'));
+      }
+    </script>
+  </body>
+</html>
