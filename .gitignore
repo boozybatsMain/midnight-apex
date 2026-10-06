@@ -2,3 +2,7 @@ node_modules/
 dist/
 shots/*
 !shots/showcase/
+.genex/
+.env
+.env.*
+!.env.example

@@ -8,6 +8,8 @@ const devPages = existsSync('dev')
   : {};
 
 export default defineConfig({
+  // Relative asset paths so the build works from any hosted URL (Genex hosting).
+  base: './',
   server: { port: 5391, strictPort: true, host: '127.0.0.1' },
   build: {
     target: 'es2022',

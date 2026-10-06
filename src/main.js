@@ -1,5 +1,10 @@
 // MIDNIGHT APEX — entry point. Boots the game core behind the loading veil.
+import { initEmbed } from '@genex-ai/embed-sdk';
+import { GENEX } from './genex.config';
 import { Game } from './core/game.js';
+
+// Genex player identity (guest or signed-in). Must run first; never blocks rendering.
+initEmbed({ slug: GENEX.slug, apiUrl: GENEX.apiUrl, dashboardOrigins: GENEX.dashboardOrigins });
 
 const veil = document.getElementById('veil');
 
