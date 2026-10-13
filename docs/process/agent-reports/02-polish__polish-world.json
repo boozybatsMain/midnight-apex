@@ -1,0 +1,86 @@
+{
+  "workflow": "02-polish",
+  "label": "polish:world",
+  "phase": "Polish",
+  "role": "World polisher",
+  "owned_files": [
+    "src/world/*.js",
+    "dev/world.html"
+  ],
+  "mission": "Issues 2 (wet-road mirror too perfect: Fresnel + luminance-dependent blur), 3 world side (reflection camera excludes LAYERS.NO_REFLECTION, HDR soft knee), 4 (steam plumes as wispy lit volumes), 8 (facade close-up detail: analytic windows, interior mapping, street-light wash).",
+  "effort": "high",
+  "model": "claude-opus-5-5",
+  "started_local": "2026-10-05 02:28",
+  "ended_local": "2026-10-05 03:29",
+  "duration_min": 60.5,
+  "api_calls": 143,
+  "tool_calls": 180,
+  "tools_by_name": {
+    "Bash": 102,
+    "Read": 77,
+    "StructuredOutput": 1
+  },
+  "tokens": {
+    "output": 166958,
+    "cache_read": 38327787,
+    "cache_write": 731250,
+    "input": 286
+  },
+  "structured_report": {
+    "issues_addressed": [
+      {
+        "issue": "#2 Wet-road mirror too perfect: the player's car was mirrored crisply behind/below itself, with readable livery",
+        "fix": "Rewrote WET_REFLECT in src/world/wetShader.js. (1) Schlick Fresnel with F0 = 0.02, computed on the macro normal (geometric normal plus 35% of the ripples): about 4–5% looking down behind the car, 50–80% at grazing angles. (2) Blur depends on luminance. A new 4-tap wide glossy lookup on a coarse mip (sampleReflectionSoft) replaces the sharp streak for non-emissive content. Blur and contrast loss scale with steepness (up to 60% darker near field). Bright sources ('hot', max channel > 0.3..2.2) keep the crisp streak and get an HDR lift (x1.25 grazing to x2.6 steep), so tail lights, neon and lamps still streak at ~5% Fresnel. (3) Puddle mask edges softened (road smoothstep 0.69..0.79 to 0.655..0.815; ground 0.70..0.76 to 0.67..0.79). (4) Distant puddles get an animated shimmer (UV jitter, short streak, brightness ripple, rain-driven extra mip), so uniform glows no longer read as flat painted patches. (5) Where the planar reflection is on, the PMREM IBL term is dropped except a 15% hint on rough asphalt. The PMREM's stylised neon boxes were showing up as crisp flat colour patches in puddles. The water material (environment.js) gets the same treatment. Result: the car's reflection is a faint dark smear (cmp-chase4, g4/g3 chase), and neon streaks and puddle mirrors further away are kept.",
+        "verified": true
+      },
+      {
+        "issue": "#3 (world side) Nitro flames and very hot sources produced huge blobs in the planar reflection",
+        "fix": "In src/world/reflection.js the virtual camera now uses (camera.layers.mask & ~(1<<LAYERS.NO_REFLECTION)) | 1, so anything on layer 3 is never mirrored. Car (flames, beam cone), particles and rain already use that layer. Every reflection tap (road streak taps, the soft taps and the water taps) also goes through an HDR soft knee (reflKnee: linear below luminance 4, compressing toward about 12 above it). Anything the layer misses can still streak but cannot bloom into a giant blob. Verified on the nitro run: no blue blobs under the car (g6-nitro, compare base-nitro).",
+        "verified": true
+      },
+      {
+        "issue": "#4 Steam plumes rendered as opaque white walls and whited out the screen when driven through",
+        "fix": "Rewrote the steam in src/world/props.js, still one InstancedMesh draw call (16 puffs per vent). Density is two counter-scrolling tileable fBm octaves (procedural DataTexture) under a soft radial mask, so it reads as wisps, not balls. Puffs are born thin, then thin out as they expand. The plume is lit, not white: per vent, a light colour at the base and at 6.5 m is baked from the real streetlights (same lamp list, intensities and falloff as the road pools) plus a neon spill tint, so plumes glow sodium-amber or LED-cool. Each puff fades with camera distance (1.2–7.5 m) and with screen-space size, and fully faded puffs are collapsed in the vertex shader (no fill cost up close). There is a soft fade at the ground and a jet-then-drift motion with wind. Verified in chase, hood-cam drive-through and distant views (st3-approach/through, g6-hoodsteam, g7-steam2450): no white-out.",
+        "verified": true
+      },
+      {
+        "issue": "#8 Buildings up close read flat: pixelated far window mosaic, blurry storefronts, no window depth, no street-light wash",
+        "fix": "Rewrote the facade branch of the existing building material in src/world/city.js (no new geometry or draw calls). NEAR (cells of about 6 px or more): each window is analytic, with an AA opening and the view ray walked into a recessed reveal (jambs, sill and soffit visible at street level). Frames, transoms and mullions are drawn on the glass plane, crisp at any distance, and the blurry painted mullions were removed from the atlas. Behind the glass is an interior-mapped room box: back wall uses the drawn window content, side walls use content at depth, a ceiling with a light fitting, and the floor. Offices, glass towers and shops span several bays. Glass Fresnel hands grazing views to the env reflection. It is branchless with one atlas fetch. MID: window coverage is box-filtered exactly over the pixel footprint, giving crisp dots instead of a mip-blurred mosaic. FAR: the expected emission with smooth floor-band value noise instead of hashed blocks, so the far skyline is no longer pixelated (cmp-skyline). STREET-LIGHT WASH: createStreetLightMap() bakes a top-down irradiance map (3 m cells) from lamps.posts, using the road-pool falloff and luminaire cutoff. Lower facades (below ~9.5 m) facing the road get warm sodium or cool LED pools where the lamps actually are, and the old uniform street glow was reduced. In the reflection pass the near path is skipped (uLite), so the mirror pass costs no more. Fixed emitBox so facade u runs along cross(up, n), which the shader needs for its tangent frame (checked: 15096 consistent, 0 flipped). Before/after: cmp-facade, b0-* vs b4-*/b5-C.",
+        "verified": true
+      }
+    ],
+    "files_changed": [
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/src/world/reflection.js",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/src/world/wetShader.js",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/src/world/environment.js",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/src/world/props.js",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/src/world/city.js",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/dev/world.html"
+    ],
+    "cross_module_notes": "- Reflection camera: mask = (camera.layers.mask & ~(1 << LAYERS.NO_REFLECTION)) | 1. Layer 0 is always kept. Anything that must not appear in the wet road just needs obj.layers.set(LAYERS.NO_REFLECTION). carModel (flames, cone), particles and rain already do this, and this was verified on the nitro run.\n- All planar-reflection taps are soft-kneed above luminance 4 (compressing toward about 12). Very bright emissives still streak but are capped in the mirror, so there is no need to dim them for the reflection's sake.\n- The road and ground no longer add the PMREM IBL specular where the planar reflection is on (only a 15% hint on rough asphalt). envMap and scene.environment are unchanged for cars.\n- city.js additions (optional, backward compatible): createStreetLightMap(posts) export; the city object gains setStreetLights(posts) and setLite(on); the building material gains uniforms uStreetLight, uSLBounds, uSLOn, uSLGain (default 0.45) and uLite. environment.js calls city.setStreetLights(lamps.posts) at build time and wraps the reflection render in city.setLite(true/false).\n- Facade UV direction changed: u now runs to the viewer's right, along cross(up, n). Nothing outside city.js uses building UVs (signs.js uses city.frontage only).\n- Steam: props.steamVents API and positions are unchanged. Still one InstancedMesh, 144 instances (was 126).\n- dev/world.html: new ?camS=s,lat,h&lookS=s,lat,h (track-space camera), ?cam=x,y,z&look=x,y,z, and ?noinfo=1.\n- Seen during testing but owned by others: (a) core #7: the player headlights still blow out a barrier or facade a few metres ahead (g6-bumper after hitting the barrier at s≈2700; a white blob on the right barrier in g6-nitro). (b) In ?quality=low (IBL only, code path unchanged) smooth puddles still mirror the PMREM's lamp spheres as bright spots near the car.",
+    "perf_impact": "- Draw calls: unchanged. Same city meshes and skyline, steam still 1 draw, no new passes or render targets. In-game telemetry: 168–288 draw calls depending on view, as before.\n- GPU, uncapped 1920×1080 in-game A/B, old vs new building material at fixed spots: about 151→147 fps and 154→144 fps next to the boulevard facades, and about 100→96 fps at the waterfront. That is roughly +0.2–0.4 ms per frame.\n- Road shader: +4 coarse-mip taps (soft lookup) +2 detail-texture taps per wet fragment. Measured within noise in the A/B above.\n- Reflection pass: buildings skip the near-field window and interior path (uLite), and the reflection camera skips the NO_REFLECTION layer, so the mirror pass is no more expensive than before.\n- Steam: fully faded puffs are collapsed in the vertex shader, so there is less overdraw than the old opaque sprites when driving through.\n- Memory: +1 street-light map (800×617 RGBA8 with mips, about 2.6 MB) and a 128² steam noise texture. The street-light bake takes a few ms at load.\n- Capped 60 fps holds at 1080p in an autopilot race (fps 60.0 over 4 s and 3 s), with no subsystem errors.",
+    "remaining": [
+      "Headlight blow-out on barriers or cars a few metres ahead is core #7, outside the world files (visible in g6-bumper and g6-nitro).",
+      "?quality=low still uses the IBL in puddles; its PMREM lamp spheres show as bright spots near the car (pre-existing path, low-only). This could be softened later by dimming the env map's lamp spheres or raising the puddle roughness on low.",
+      "Bright neon reflections in nearby puddles (e.g. a sign mirrored right beside the car) intentionally stay crisp because they are emissive. If the lead wants them softer, lower the 'hot' threshold or the steep HDR lift in WET_REFLECT."
+    ],
+    "best_screenshots": [
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/polish-world-cmp-chase4.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/polish-world-g4-chase2.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/polish-world-g6-nitro.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/polish-world-st3-approach.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/polish-world-g6-hoodsteam2.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/polish-world-g7-steam2450.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/polish-world-cmp-facade.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/polish-world-b5-C-final.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/polish-world-cmp-skyline.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/polish-world-final-race2.png"
+    ],
+    "other_improvements": [
+      "The water material gets the same HDR knee and no longer mixes in the PMREM boxes, so the waterfront mirror matches the street.",
+      "Steam plumes are lit by the actual nearby streetlights (sodium vs LED) with a neon tint, and drift and sway with a per-vent wind.",
+      "Analytic window frames, mullions and transoms are crisp at any distance; the blurry painted ones were removed from the facade atlas.",
+      "dev/world.html has track-space and absolute free cameras for close-up facade checks."
+    ]
+  }
+}

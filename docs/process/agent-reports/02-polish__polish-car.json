@@ -1,0 +1,87 @@
+{
+  "workflow": "02-polish",
+  "label": "polish:car",
+  "phase": "Polish",
+  "role": "Car polisher",
+  "owned_files": [
+    "src/vehicle/car*.js",
+    "dev/car.html"
+  ],
+  "mission": "Issues 3 car side (flames and beam decal on NO_REFLECTION layer, believable flame), 5 (soft realistic low-beam pattern with SpotLight cookie), 6 (hood-cam paint without blocky reflections, crisp livery), 7 car side (no extreme HDR highlights from headlights).",
+  "effort": "high",
+  "model": "claude-opus-5-5",
+  "started_local": "2026-10-05 02:28",
+  "ended_local": "2026-10-05 03:14",
+  "duration_min": 45.7,
+  "api_calls": 133,
+  "tool_calls": 157,
+  "tools_by_name": {
+    "Bash": 94,
+    "Read": 57,
+    "Edit": 5,
+    "StructuredOutput": 1
+  },
+  "tokens": {
+    "output": 168104,
+    "cache_read": 40295416,
+    "cache_write": 413602,
+    "input": 266
+  },
+  "structured_report": {
+    "issues_addressed": [
+      {
+        "issue": "#3 Nitro flame reflections + bloom bomb (car side)",
+        "fix": "Replaced the crossed additive quads (HDR 5.5 blue) with a closed lathe hull per tip that bounds a ray-marched volumetric flame (12 steps, only on hull pixels while nitro is on): blue envelope that shifts to violet, a small white-hot core at the nozzle and a train of shock diamonds. The output soft-saturates at about 1.7, so looking straight down the flame from the chase cam gives a glint, not a bloom bomb. Flame meshes (both LOD levels) and the road beam decal are now on LAYERS.NO_REFLECTION. The exhaust-glow emissive gain under nitro went from 6 to 1.4, so the pipe discs no longer mirror as blobs. Result: no blue blobs or streaks in the wet-road reflection (before/after in shots/polish-car/before-after.png, middle row).",
+        "verified": true
+      },
+      {
+        "issue": "#5 Hard-edged bat-wing headlight pool (bumper/hood) + soft realistic low beam",
+        "fix": "One analytic low-beam profile (lowBeamProfile in carTextures.js) now drives both the real lights and the decal. It has a soft cut-off about 0.6° below the horizon with a 15° kink up on the right, intensity falling as roughly δ^-3.2 below the cut-off so the road is evenly lit from about 4 m to 15 m and fades out by about 45 m, wide soft sides, and a faint blue fringe at the cut-off. The player's SpotLights now use it as SpotLight.map: a 128x512 half-float light cookie. They sit at the projectors (±0.80, 0.63, 1.92), aim level, use angle 0.8 rad, penumbra 0.62, decay 2, and shadow.camera.near 0.05 so the cookie is also applied right next to the lamp. The additive road decal texture is now the integrated road illuminance of the same two lamps, on a wider trapezoid (z 2→38 m, half-width 2.4→24 m) with border fades. Decal gains are AI 0.15 and player 0.10 (the real spots carry the player). Checked in chase-far, chase-near, hood and bumper: no bat-wing or hard edge, a soft even pool (shots/polish-car/v5-bumper.png, v5-hood.png, bench-hood-bumper.png).",
+        "verified": true
+      },
+      {
+        "issue": "#6 Hood-cam paint: blocky flat-colour rectangles + pixelated livery stripe",
+        "fix": "Root cause: the flat hood mirrored the static PMREM night env (flat neon boxes and 4x5 px window texture) at about 6 screen px per env texel through a 0.03-roughness clear coat. The paint shader now raises the clearcoat roughness used for the environment lookup only near the lens (smoothstep from 0.7 to 2.6 m view distance, up to 0.2), so the hood shows soft glossy glows. Chase and menu views are unchanged. The racing stripes and pinstripes are now drawn analytically in the paint shader in body-UV space, anti-aliased with fwidth, with panel gaps from the mask kept on top, so they are crisp at any magnification. The canvas stripes are off (new `stripes` option). Livery and mask anisotropy went to 16, the mask from 1024 to 2048, and satin details now get a thinner coat. The hood nostril vents are now slatted ducts (glossy slats in the mask) instead of flat black trapezoids. Metallic flakes now use two octaves (1.5 mm and 0.4 mm), each shown only near pixel size, so there is no blocky flake mosaic up close. Before/after: shots/polish-car/hood-compare.png.",
+        "verified": true
+      },
+      {
+        "issue": "#7 Headlight glare on cars ahead (car materials side)",
+        "fix": "Every lit car material gets a shared shader patch (paint, trim, glass, carbon, chrome, mesh, interior, tire, disc, tail housing, caliper and the rims). For punctual lights only it applies a minimum roughness (0.08 base, 0.09 clear coat), then a hue-preserving soft-clip on the direct specular sum, linear up to 1.2 and saturating at about 3.5, for both the base and clear-coat lobes. Environment reflections are untouched. Combined with the cookie's cut-off, which puts most of the light below the lamp height of a car ahead, GHOST 4.2 m ahead looks lit, not nuked, even with core's exposure cap disabled at full 2×1646 cd (shots/polish-car/follow-nocap-near42.png, follow-nocap-hood42.png). With core's cap on: follow-near42.png.",
+        "verified": true
+      }
+    ],
+    "files_changed": [
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/src/vehicle/carModel.js",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/src/vehicle/carTextures.js",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/src/vehicle/carParts.js",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/dev/car.html"
+    ],
+    "cross_module_notes": "CORE (headlight cap logic in game.js):\n- spotLights[i].intensity now means candela straight ahead at the horizon, where the cookie value is 1.0. The default went from 900 to 1800 (HEADLIGHT_CD).\n- Relative to that, the cookie peaks at about 5.7× just below the cut-off (1–1.5° down). It is about 0.2× one degree above the cut-off and about 0.05× higher up.\n- The spots now aim level: the target is at lamp height, z+30. Lamps are at (±0.80, 0.63, 1.92), angle 0.8 rad, penumbra 0.62.\n- `_beamExposure` / `spotLocalFrames` read angle, penumbra and target, so they stay consistent. The estimate at hitY 0.6 is correct for a rival's mid-height, but the lower body (below ~0.5 m) sits in the hot zone.\n- For a less conservative and more accurate cap, multiply your per-lamp `cone` by the new `car.model.headlightProfile(tx, ty)` and sample the rival at about 0.35 m and 0.6 m. Arguments are lamp-frame tangents: tx = lateral/forward with + = car's RIGHT; ty = (hitY − 0.63)/forward. `model.headlamp` gives the lamp numbers. Right now the cap drops to about 6% with a car 4 m ahead, which also removes the road pool.\n- The hood-view 0.6 factor in `_cullBeamDecals` was added for the hard white ovals. The pattern is now soft, so the factor is optional.\n\nCORE (decal and camera):\n- The beam decal is still a direct child of model.root with AdditiveBlending, so your finder still works. The player's decal now uses a cloned material; `model.beamDecal` is also exposed.\n- No hood-cam hint is needed: your calibrated hood cam (z≈1.24, about 0.2 m over the hood) frames the new hood well.\n\nWORLD:\n- Flames and decals are on LAYERS.NO_REFLECTION. The SpotLights deliberately stay on layer 0. Never mask lights out of the reflection camera: it would change NUM_SPOT_LIGHTS between passes and double the program variants.\n\nFX:\n- The car's volumetric flame now provides the nozzle core and the shock-diamond look. When I hid fx-hot to isolate the car flame, the chase-cam tongues looked about the same. The test was ambiguous, though: hiding the flame mesh also left similar tongues, so the split is unconfirmed.\n- If the chase view still feels too streaky, consider shortening or dimming emitNitroFlame (fx-hot); otherwise the car flame alone carries the look.\n\nALL LIT MATERIALS:\n- SpotLight.map adds NUM_SPOT_LIGHT_MAPS=2 to every lit program: two more samplers and two vec4 varyings. No texture-unit warnings showed up, but keep it in mind for materials close to 16 samplers.\n\nNEW EXPORTS (carTextures.js, additive only):\n- lowBeamProfile, lowBeamGround, getHeadlightCookie, HEADLAMP, BEAM_DECAL, STRIPE, liveryStripeStyle.\n- makeLiveryTexture takes an optional `stripes` flag (default true).\n- getFlameTexture is still exported but no longer used.\n\nNEW OPTIONAL MODEL MEMBERS:\n- headlightProfile, headlamp. All existing members are unchanged.\n\ndev/car.html: the camera enables LAYERS.NO_REFLECTION, and there are new view=hood and view=bumper presets.",
+    "perf_impact": "Draw calls: no new meshes or passes. The flame is still one mesh per LOD level, and the player's cloned decal material adds no draw. Measured 239–259 draw calls in race.\n\nPer-fragment cost:\n- Spot cookie: 2 bilinear half-float samples plus 2 varyings in every lit program, roughly ≤0.2 ms at 1080p.\n- Paint: analytic stripes, a second flake octave and one extra mask fetch, on car pixels only.\n- Spec clip: a few ALU ops on car materials.\n- Flame: a 12-step ray-march, only on flame-hull pixels and only while nitro is on.\n\nMemory: the mask texture went from 1024² to 2048² (about +12 MB with mips). The cookie is 0.5 MB. The anisotropy-16 sampling on the livery adds a little bandwidth on car pixels.\n\nFPS: a steady 60 with vsync at 1600×900 and 1920×1080, no subsystem errors, and clean consoles in both high and low quality. Uncapped 1080p runs read 108–125 fps, but the four agents were sharing the GPU and hot-reloading, so those numbers can't attribute cost to my changes. A/B attempts on the cookie were too noisy to quote.",
+    "remaining": [
+      "Core's headlight auto-exposure is still conservative: with a car 3–5 m ahead it dims the spots to about 6%, so the road pool disappears. Using model.headlightProfile in _beamExposure would fix this (core's file).",
+      "fx particle nitro flames (fx-hot): the chase-cam tongues looked about the same with fx-hot hidden, so I'm not sure they matter. That's for fx to judge; my car flame is already toned down.",
+      "AI headlight decals still light the road ahead of a car in front of them, with no occlusion (for example NOVA right behind the player on the grid). I lowered the gain and the far field to keep it from reading as a beige wash, but it's a flat decal, not a lit volume.",
+      "The hood env softening is distance-based. A real-time env probe would give true moving reflections on the hood, but would cost extra render passes, so I didn't add one.",
+      "Uncapped FPS couldn't be A/B'd cleanly because other agents were hot-reloading and rendering in parallel. Re-measure with `node scripts/shot.mjs --uncapped` once the polish agents are idle."
+    ],
+    "best_screenshots": [
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/polish-car/before-after.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/polish-car/hood-compare.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/polish-car/v5-hood.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/polish-car/v5-bumper.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/polish-car/v4-nitro-far.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/polish-car/follow-nocap-near42.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/polish-car/follow-nocap-hood42.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/polish-car/bench-hood-bumper.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/polish-car/flame1-side.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/polish-car/v5-sheet.png"
+    ],
+    "other_improvements": [
+      "The decal pattern and the spot cookie come from one function, so the AI cars' pools and the player's real lights match.",
+      "The hood nostril vents now read as slatted ducts from the hood cam, in both high and low quality.",
+      "The car bench (dev/car.html) has hood and bumper presets and sees the NO_REFLECTION layer.",
+      "Paint, glass and the other car materials now use explicit customProgramCacheKey values ('apex-carpaint-v2' and 'apex-car-*'), so they can never share a program with unpatched world materials."
+    ]
+  }
+}

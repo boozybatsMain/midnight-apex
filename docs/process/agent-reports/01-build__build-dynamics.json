@@ -1,0 +1,72 @@
+{
+  "workflow": "01-build",
+  "label": "build:dynamics",
+  "phase": "Build",
+  "role": "Vehicle physics + AI drivers",
+  "owned_files": [
+    "src/vehicle/physics.js",
+    "src/vehicle/ai.js",
+    "dev/physics.html",
+    "dev/*.mjs"
+  ],
+  "mission": "Single-track model with Pacejka-style tires, load transfer, friction circle, 6-speed automatic, nitro, handbrake drifts with counter-steer assist; AI with cached racing line, speed profile, pure pursuit, overtaking, rubber-banding, recovery. Verified with Node test scripts (0-100, top speed, braking, lateral g, 5-car 3-lap AI race).",
+  "effort": "high",
+  "model": "claude-opus-5-5",
+  "started_local": "2026-10-04 23:18",
+  "ended_local": "2026-10-05 00:33",
+  "duration_min": 75.7,
+  "api_calls": 95,
+  "tool_calls": 103,
+  "tools_by_name": {
+    "Bash": 84,
+    "Read": 13,
+    "Write": 5,
+    "StructuredOutput": 1
+  },
+  "tokens": {
+    "output": 230625,
+    "cache_read": 27827024,
+    "cache_write": 441746,
+    "input": 190
+  },
+  "structured_report": {
+    "files": [
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/src/vehicle/physics.js",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/src/vehicle/ai.js",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/dev/physics.html",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/dev/physics-test.mjs",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/dev/ai-race-test.mjs",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/dev/drift-tune.mjs",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/dev/keyboard-sim.mjs",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/dev/ai-overtake-test.mjs",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/dev/ai-recovery-test.mjs",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/dev/ai-trace.mjs",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/dev/ai-nitro-diag.mjs",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/dev/launch-diag.mjs",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/dev/physics-diag.mjs",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/dev/tire-curves.mjs",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/dev/perf-test.mjs"
+    ],
+    "summary": "Built the vehicle dynamics (src/vehicle/physics.js) and the AI drivers (src/vehicle/ai.js), plus a visual bench (dev/physics.html) and Node test scripts. Everything was tested against the real circuit (2905 m) and in the running game.\n\nPHYSICS (class VehiclePhysics)\n- Model: single-track (bicycle) model. Velocity is integrated in world space at the CG, so there is no rotating-frame drift. The public `position` is the contract origin (midway between the axles); the CG sits 0.135 m behind it (45/55 split, 1450 kg, 2500 kg·m², CG height 0.44 m).\n- Tires: simplified Pacejka curves. Front peaks at about 9° and falls to ~0.85 when overdriven; the rear is stiffer per unit load (stable at high speed) and keeps ~0.93 when sliding. Axle loads include longitudinal weight transfer (from smoothed acceleration) and downforce growing with v².\n- Combined slip: a friction ellipse per axle. Traction control knows how much grip cornering is using: generous wheelspin allowance at launch and while drifting, almost none at high speed.\n- Braking: ABS/brake distribution limits brake force to what is left after cornering, with extra rear margin. Trail braking stays stable.\n- Handbrake: blends the rear axle into a locked, sliding wheel. That initiates drifts.\n- Low speed: below ~3 m/s the state blends into a simple no-slip model, lateral forces are capped, and parking friction holds the car still. Result: no jitter, no creep, tight turns at walking pace.\n- Drivetrain:\n  - Torque curve with a 650 N·m plateau, 6-speed automatic with skip-downshifts (kickdown, braking, coasting) and no gear hunting.\n  - Upshifts at 7600 rpm, also triggered by wheelspin rpm. 0.15 s cut on upshift, 0.09 s on downshift.\n  - Rev limiter bounce at 8000, launch clutch slip, engine braking, aero drag and rolling resistance.\n  - Top speed: a soft speed governor (\"ECU limiter\") caps it at ~305 km/h. Without it, lower drag would let the car pull to the 6th-gear limiter, and the extra drag needed for a natural 305 km/h top speed made high-speed acceleration sluggish.\n  - Nitro: +45% drive force plus a small push, overrides the governor, and is then capped by the 6th-gear limiter at ~336 km/h. The tank lasts 5 s, refills slowly over time and faster while drifting.\n  - Reverse: hold brake at a standstill (≤45 km/h).\n- Steering and assists:\n  - Speed-sensitive maximum angle (32° → ~10° at 100 km/h → ~5.4° at 250 km/h) and a steering rate limit.\n  - Counter-steer: the front wheels follow the velocity once the car slides.\n  - A mild stability-control effect for normal grip driving.\n  - Drift latch plus an arcade drift-angle controller: holding throttle and steering into the slide keeps ~26° (0.6 steer) to ~41° (full lock) indefinitely. Neutral steering, counter-steer or lifting off straightens the car in about 1 s.\n  - Drift speed retention.\n  - NFS-style \"brake to drift\": throttle and brake held together at speed while steering acts like a light handbrake.\n\nMeasured (dev/physics-test.mjs, all pass):\n\n| Test | Result |\n|---|---|\n| 0-100 km/h | 3.39 s |\n| 0-200 km/h | 8.7 s |\n| 0-300 km/h | 22.3 s |\n| Top speed | 303.8 km/h |\n| Top speed with nitro | 336 km/h |\n| Nitro tank | 4.99 s |\n| Braking 100→0 | 34 m |\n| Steady lateral grip | 1.51 g at 100 km/h (1.66 g at 220 km/h) |\n| Rest / slow turn / reverse | no creep, no jitter, works |\n| dt stability (1/240 vs 1/120) | 0.44 m position difference |\n| Huge impulses, random input fuzz | always finite, no NaN |\n\nOutputs: every contract field, including per-wheel skid (slip angle, wheelspin, lock, drift), smoothed drift, spring-damped pitch/roll (≤4.2°), rear wheels spinning faster under wheelspin and stopping when locked, `shiftCount` / `lastShiftUp`, and a backfire counter.\n\nAI (class AIDriver)\n- Racing line: computed once per track and cached (WeakMap). Minimum-curvature solver on a coarse-to-fine hierarchy (16 m → 6 m → 2 m) within ±(wallOffset − 1.6). Verified visually: outside-inside-outside through the city blocks, a nearly straight line through the chicane, full width in the hairpin.\n- Speed plan per driver: corner speed from grip including downforce, plus braking and acceleration passes that account for combined grip. Grip and braking limits come from the physics spec; skill sets how close to the limit each driver plans.\n- Control: pure pursuit with look-ahead growing with speed, yaw-rate damping, and a barrier guard. Feed-forward throttle/brake from the slope of the speed plan.\n- Traffic: cars alongside force a hard 3 m lateral separation, applied by both cars. A slower car ahead makes the AI pick the side with room, with only small line shifts allowed mid-corner; otherwise it follows at a speed-scaled gap.\n- Also: nitro whenever no braking zone is within ~2.2 s, rubber-banding (±6% power, ±3% grip versus the player), seeded per-driver imperfections, recovery from stuck or wrong-way, and slow U-turns when badly misaligned.\n\nAI results:\n- 5-car, 3-lap race: every car finishes, 0 wall contacts, 0 car contacts, 0 stuck. Laps 75.1–76.7 s; first lap about +4 s.\n- Autopilot at skill 0.97: 74.6 s laps; skill 1.0: 74.3 s, still clean.\n- Overtake scenarios: the faster car always gets past, with 0–5 light contacts.\n- Recovery scenarios: all 5 recover (reversing starts ~0.7 s after the start grace).\n- Full game (core plus real collisions): all 5 cars ran a lap at ~79 s first-lap pace.",
+    "contract_notes": "Everything here is additive; nothing in the contract was renamed or removed.\n\nCONTROLS\n- Optional `hold: bool`: hold the brake without engaging reverse. AIDriver returns `{ brake: 1, hold: true }` when `raceActive` is false. Core's HELD controls already use it.\n- Reverse never engages while the handbrake is held.\n- Throttle and brake held together at more than ~50 km/h, while steering, acts as a light handbrake (\"brake to drift\"). This is intentional.\n\nPHYSICS: EXTRA FIELDS\n- `spec` (the merged tuning).\n- `powerScale` and `gripScale` (default 1). AIDriver writes these every update for rubber-banding.\n- `inertia`, `gearCount`.\n- `nitroLevel` (0..1, smoothed nitro intensity), `wheelspin` (0..1), `handbrake` (0..1, applied).\n- `reversing`, `shifting`, `onLimiter` (bools).\n- `load` (engine load 0..1, for audio).\n- `gLong` (+ = accelerating) and `gLat` (+ = accelerating toward the car's right, i.e. turning right), both in g.\n- `frontSlip` and `rearSlip` (tire slip angles, rad).\n- `backfireCount`: increments on a sharp lift-off at high rpm. Core already reads it.\n\nPHYSICS: EXTRA METHODS\n- `reset(pos, heading, { nitro })`: reset keeps the nitro tank unless you pass `nitro`.\n- `syncGear()`: picks the right gear after setting velocity directly.\n- `maxSteerAt(speed)`.\n- `estimateAccel(v, nitro)`.\n\nINTERPRETATIONS\n- `slipAngle`: + = the velocity points to the car's right. It is 0 below 1 m/s.\n- `speedKmh` is the magnitude of the full velocity, so it reads correctly in a sideways drift.\n- `heading` is continuous (not wrapped) until |h| > 1000 rad. Core's interpolation already handles wrapping.\n- `position` is the contract origin (midway between the axles). The dynamics run at the CG, 0.135 m behind it; `applyImpulse` torque uses the CG.\n- Top speed is a soft governor at ~305 km/h. Nitro overrides it up to the 6th-gear rev limit (~336 km/h).\n- Grip is deliberately arcade-sim: ~1.5 g steady cornering.\n\nAI\n- New export: `getRacingLine(track)` (cached) returns `{ N, step, w, px, pz, kap, limit }` for debug overlays and minimaps.\n- `update()` returns the same reused controls object on every call; copy it (core's `copyControls` already does).\n- Readable fields: `mode` ('idle' | 'race' | 'recover'), `targetSpeed`, `targetLateral`, `avoid`, `debug`.\n- The racing line and speed plan are built in the constructor, at load time. The line takes ~30-50 ms per track and is shared; each driver's plan takes a few ms.\n- It doesn't rely on the track's `getCurvatureAt` sign: curvature is computed from the line geometry. Note the old stub's sign was inverted.\n- `ctx.cars` entries may include the car itself; it is skipped by comparing `physics` objects.",
+    "known_issues": [
+      "Lap times are at the top of the contract's 55–75 s target: best AI 75.1 s, autopilot (skill 0.97) 74.6 s, weakest AI ~76.7 s, first lap about +4 s (standing start). This circuit is technical (many 90° corners on 30–45 m radii, short straights), so time is set by cornering and braking; power or mass changes barely move it. Going faster would mean even more grip than the current ~1.5 g.",
+      "An AI-only race is a procession (0 position changes over 3 laps): rubber-banding and similar car pace keep the order. Overtakes do work against slower cars (scenario tests), and the player in the mix is what drives the action.",
+      "In the overtake scenarios the AI still makes 0–5 light contacts when passing an evenly matched car; it is clean in the full race.",
+      "A crude simulated keyboard driver (AI intent turned into on/off keys plus reaction delay, through core's real keyboard filter) laps in 79–84 s with 4–21 light wall touches depending on delay. That is a rough proxy, not a human playtest; real keyboard feel still needs a hands-on check once the game stops hot-reloading.",
+      "Brake taps followed by full throttle and full lock deliberately start a drift. Ordinary trail braking stays stable (max ~12° slip), but very aggressive brake-plus-full-steer inputs can still rotate the car.",
+      "The launch shows strong wheelspin and smoke for ~1.2 s (fading by ~55 km/h), and a light tire squeal (rear skid ~0.26) during traction-limited acceleration and ABS braking. That squeal is below core's skid-mark threshold of 0.35, so it adds sound but no marks.",
+      "Long full-game runs were repeatedly cut short by hot reloads from other agents. Full-game verification is a 1-lap autopilot run, a 20-second run and a scripted manual drive (which reloaded partway through); there was no complete 3-lap race in the real game."
+    ],
+    "perf_notes": "CPU only, no rendering cost: physics and AI add no draw calls (the bench is dev-only).\n\nphysics.step does no allocations, only scalar math with reused Vector3s. AIDriver.update allocates nothing per update except whatever the world module's track.project returns.\n\nMeasured while the machine was extremely loaded (load average 54–87 from other agents), so the numbers are inflated:\n- physics.step: 59–95 µs\n- ai.update: 62–124 µs\n- 5 cars, 2 physics steps + 1 AI update each per 60 fps frame: 0.9–1.6 ms\n\nUnloaded these should be roughly 10x lower: the racing-line build took 51 ms unloaded versus 600–2100 ms under that load.\n\nAI work per update: a few track lookups plus ~100 speed-plan lookups (the nitro look-ahead is the largest part). The 60 Hz AI rate core uses is plenty. All one-off setup (racing line ~30–50 ms per track, cached; speed plan a few ms per driver) happens when the AIDriver is constructed, not on the first race frame.",
+    "screenshots": [
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/physics-v3-blocks.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/physics-v3-hairpin.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/physics-v3-chicane.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/physics-v2-map.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/physics-v4-drift1.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/physics-game-v3-a.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/physics-game-drive-nitro.png"
+    ]
+  }
+}

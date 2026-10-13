@@ -1,0 +1,63 @@
+{
+  "workflow": "01-build",
+  "label": "build:car",
+  "phase": "Build",
+  "role": "Procedural hero car model",
+  "owned_files": [
+    "src/vehicle/carModel.js",
+    "src/vehicle/car*.js",
+    "dev/car.html"
+  ],
+  "mission": "Lofted smooth supercar body from profile curves, greenhouse with tinted glass, clear-coat flake paint, carbon accents, livery decals, LED head/tail lights, real SpotLights for the player, multi-spoke rims, brake discs/calipers, contact shadow, visual suspension; about 25 draw calls per car at most.",
+  "effort": "high",
+  "model": "claude-opus-5-5",
+  "started_local": "2026-10-04 23:18",
+  "ended_local": "2026-10-05 01:31",
+  "duration_min": 133.1,
+  "api_calls": 202,
+  "tool_calls": 215,
+  "tools_by_name": {
+    "Bash": 122,
+    "Read": 85,
+    "Write": 7,
+    "StructuredOutput": 1
+  },
+  "tokens": {
+    "output": 367933,
+    "cache_read": 80005860,
+    "cache_write": 955350,
+    "input": 404
+  },
+  "structured_report": {
+    "files": [
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/src/vehicle/carModel.js",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/src/vehicle/carBody.js",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/src/vehicle/carParts.js",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/src/vehicle/carTextures.js",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/dev/car.html"
+    ],
+    "summary": "I built the procedural mid-engine supercar for MIDNIGHT APEX. It is in place, the game already uses it, and in-game autopilot runs hold 60 fps with no console errors.\n\nHow it is built:\n- **Body (carBody.js):** a lofted shell with 175 stations along the length. Each cross-section is a superellipse driven by length-wise curves for width, shoulder height, widest-point height, floor, exponent, tumblehome, tuck-under and a hood \"valley\" (so the fenders sit above the hood and the engine cover is humped). Sections are resampled at the same positions on every station, which keeps clear-coat reflections smooth. Flared arch lips, the rear side-intake scoop and a door crease are pushed along the section normals. The nose and tail are raked. Arch openings (arched top, vertical sides) are cut by dropping triangles and snapping the edge vertices onto the opening shape. A helper projects details onto the actual mesh along an axis; lights, intakes, mesh panels, splitter, diffuser and louvres are all placed with it.\n- **Cabin:** a separate lofted greenhouse sitting on the body, split into dark tinted glass, gloss-black pillars/roof rails, and painted roof/buttresses. A darker inner shell and an interior (seats, dash, steering wheel, glowing instrument cluster) show through the glass.\n- **Paint:** clear-coated metallic with a per-car canvas livery. It has base colour, twin accent stripes, a lower door accent sweep, the door number, the name, and drawn shut lines, vents, fender vents, fuel door and a dark underbody. A shared mask texture switches clear coat, roughness and metalness off for the dark details. Metal flakes are done in the shader and fade out when they get smaller than a pixel. Rain beads sit on the clear coat and the glass, and also fade with distance (they turned into glitter at chase distance otherwise).\n- **Parts:**\n  - Front end: arch liners and inner walls, carbon side skirts, carbon splitter that follows the nose, honeycomb intakes, angular headlight units with a reflector, arrow-shaped LED running light and two projector lenses, amber side markers.\n  - Rear: grille, carbon blade, full-width LED tail bar plus three-blade corner clusters, roof-edge high brake light, reverse lights, reflectors, quad exhaust tips with trim rings and an inner glow, nitro flame planes, diffuser with five fins and a trailing blade, swan-neck carbon wing with Gurney flap and end plates.\n  - Body top: mirrors with carbon caps and chrome glass, rear-glass louvres, raised engine-cover blades, a wiper.\n- **Wheels:** rounded-sidewall tyres with a tread normal map and sidewall lettering; ten twin-spoke concave rims (two-tone machined faces, polished lip, centre lock); cross-drilled brake discs; calipers in the accent colour that steer but don't spin. A blur disc fades in from about 35 km/h to stop the spokes strobing.\n- **Lighting and ground:** player car gets two SpotLights (no shadows). Every car has an additive beam decal on the road and a soft contact shadow underneath.\n\nVerified:\n- Steering, spin, mirroring and caliper placement were checked numerically on the instance matrices, then visually.\n- `setState` covers everything in the contract: pitch and roll tilt the body around the wheel-centre height while the wheels stay planted, plus brake, reversing, nitro and headlights.\n- Three wing choices and five rim tints give variety across the 8 liveries.\n\nBench (`dev/car.html`): turntable with presets (chase, front, side, top, rear, wheel, hero), all URL params from the brief, plus clay, row of all 8 liveries, studio/city environment, wet mirror floor, local bloom and output pass. `?world=1` loads the real track and environment through their contracts so the car can be judged in game lighting.",
+    "contract_notes": "The contracted API is unchanged: `createCarModel({color, accent, name, isPlayer, quality, envMap})` returns `root`, `dimensions`, `wheelLocal`, `exhaustLocal`, `tailLightLocal`, `setState(...)` and `update(dt)`.\n\nThings the integrator should know:\n1. **Extra optional parameters:** `number` (door number, defaults to the livery index + 1), `wing` (bool, defaults per livery name), `headlightIntensity` (default 900 cd).\n2. **Extra returned fields:**\n   - `body` (the pitch/roll group)\n   - `spotLights` (player only; core already uses it)\n   - `beamDecal` (the additive road decal; core's current additive-mesh scan in `root.children` still finds it)\n   - `contactShadow`, `headlightLocal`, `materials`, `dispose()`\n3. **Local positions:** `exhaustLocal` has 4 tips at y≈0.41, z≈-2.25. `tailLightLocal` has 2 cluster centres at about (±0.75, 0.72, -2.23).\n4. **Look depends on update():** `update(dt)` drives the nitro flame flicker and the wheel-spin blur. Core already calls it every frame.\n5. **Body tilt:** pitch and roll rotate the body (including the player spotlights) about y = 0.35. Wheels, contact shadow and beam decal stay on the ground.\n6. **Detail levels:** each car switches to a low-detail body and wheels beyond 38 m. This is evaluated per camera, so the planar-reflection camera also gets the cheap version for far cars.\n7. **Caching:** shared geometry is built lazily on the first `createCarModel` call; importing the module does no work. The first call's `quality` decides whether rain beads are used, and that choice applies to every later car.\n8. **Brake light levels:** emissive levels are tuned for fx's bloom (0.42 / 0.6 / threshold 0.9). Core holds brake at 0.85 on the grid, so tail lights are deliberately strong there but not blown out.",
+    "known_issues": [
+      "Arch-lip vertex snapping can leave a few thin sliver triangles along the arch edges; only visible in extreme close-ups.",
+      "The livery is mapped by length × distance around the section, so it stretches on the nose and tail faces. Those faces carry only plain paint or separate geometry; the stripes stop at the ducktail for this reason.",
+      "Rain beads are a static normal map: no running drops and no speed-based streaking.",
+      "The interior is a simplified silhouette (seats, dash, wheel, cluster glow) with no driver.",
+      "Shared geometry build takes about 120–600 ms once on the first createCarModel call; the spread is mostly CPU contention from other agents' benches. It could be moved into a loading phase if that hitch matters.",
+      "Real headlight brightness depends on the scene. headlightIntensity is 900 cd; core already dims the spots when the camera is inside the beam."
+    ],
+    "perf_notes": "- **Draw calls per car, close up:** 16 in the colour pass.\n  - Body: 11 calls (paint, trim, carbon, wing, mesh, chrome, interior, one shared light material, tail-light housing, glass, flame).\n  - Wheels: 5 instanced calls (tyre, rim, disc, caliper, blur disc).\n  - Ground: contact shadow and beam decal.\n  - The flame and blur discs are hidden when inactive.\n- **Lights in one call:** running lights, headlight lenses, tail LEDs, reverse lights and exhaust glow share a single material, with per-vertex channel brightness set per car.\n- **Triangles per car:** about 64k close up (body shell about 28k, interior about 16k). Beyond 38 m it drops to about 25k (coarse shell, no interior or chrome, simple tyres and flat rim discs).\n- **Sharing:** all geometry and most materials are shared between cars. Per car: one 2048×1024 livery texture (1024×512 on low), a paint material with a cached shader program, and a few small state materials.\n- **Low quality:** `quality:'low'` also skips the rain-bead normal maps.\n- **Real lights:** only the player car has them (2 SpotLights, no shadows).\n- **Measured in game** (autopilot, 5 cars, full world and post-processing):\n  - 60 fps.\n  - Total draw calls dropped from 326 to about 270–290 after adding detail levels and merging.\n  - Total triangles 1.5–1.9M, including the reflection and shadow passes.",
+    "screenshots": [
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/car-final-world-chase.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/car-game3-a.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/car-final-front34.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/car-stripe-final.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/car-final-side.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/car-final-top.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/car-mirror-a.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/car-row2-front.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/car-clay3-grid.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/car-menu-b.png"
+    ]
+  }
+}

@@ -1,0 +1,132 @@
+{
+  "workflow": "01-build",
+  "label": "integrate",
+  "phase": "Integrate",
+  "role": "Integrator / lead engineer",
+  "owned_files": [
+    "all"
+  ],
+  "mission": "Check every cross-module call against real exports and sign conventions, make vite build pass, run menu to results end to end, manual driving, full autopilot races, 1080p performance, visual sanity pass, write README.",
+  "effort": "high",
+  "model": "claude-opus-5-5",
+  "started_local": "2026-10-05 01:31",
+  "ended_local": "2026-10-05 02:20",
+  "duration_min": 49.6,
+  "api_calls": 136,
+  "tool_calls": 161,
+  "tools_by_name": {
+    "Bash": 122,
+    "Read": 36,
+    "Edit": 1,
+    "Write": 1,
+    "StructuredOutput": 1
+  },
+  "tokens": {
+    "output": 115230,
+    "cache_read": 38758457,
+    "cache_write": 413202,
+    "input": 272
+  },
+  "structured_report": {
+    "build_ok": true,
+    "full_race_ok": true,
+    "manual_driving_ok": true,
+    "fps_1080p_high": 60,
+    "draw_calls": 300,
+    "fixes_made": [
+      "Static pass (src/main.js, src/core/*): every call into world, car, physics, AI, fx, audio and HUD matches the modules' real exports and signatures. Sign conventions check out end to end: a Node test found 0 of 167 curvature-sign mismatches, getRightAt equals headingRight, and grid project() returns lateral ±3.6. In game, D lowers heading and moves lateral right, A does the opposite. Model wheel yaw is -steerAngle (toward -X, the car's right); pitch + dips the nose, roll + leans right, spin + rolls the wheel forward.",
+      "Player headlights blowing barriers and the car ahead out to white (with bloom, a full-screen glare). game.js now finds the nearest barrier or car in the beam (3 rays through track.project plus a cone test on cars) and caps illuminance at roughly its 10 m level, smoothed. Verified: wall 3 m ahead drops to about 81 cd; car ahead at the start is no longer blown out. Hood-view beam pools are toned down to 0.6.",
+      "Every wall contact strobed a full-screen desaturated white-out, and pressing into a barrier kept it on. Flash and shake now fire only on a fresh or clearly harder hit (0.45 s quiet period). The postfx impact grade is reduced from 0.7 desaturation / 1.6x exposure to 0.4 / 0.6x (game.js, postfx.js).",
+      "Per-frame shader-program churn: the transparent DoubleSide additive nitro-flame material was drawn twice per pass with needsUpdate each time. In the shadow pass, the shared depth material flipped between instanced and plain meshes about 16 times a frame. Fixes: forceSinglePass on the flame (carModel.js), an init pass in game.js that applies it to all additive/no-depth-write DoubleSide materials, and a shared customDepthMaterial for instanced shadow casters. JS allocation fell from about 21 MB/s to 12.8 MB/s and getParameters calls per frame went to 0.",
+      "postfx.js: the bloom's final full-resolution additive blend is replaced by sampling the bloom composite inside the cinematic pass (renderBloomNoBlend). An A/B screenshot pair looks identical. Saves about 0.25 ms per frame at 1080p.",
+      "Per-frame allocations removed from the moon-shadow texel snapping (environment.js).",
+      "Gantry start lights now follow the countdown: five reds fill up, all go green at GO, dark after 4 s (game.js _startLights using track.setStartLights).",
+      "AI difficulty: added catch-up rubber-banding (ai.js). A rival far ahead of the player now runs -6.5% planned corner speed, -10% power and -3% grip, so a keyboard player at roughly 79-80 s laps can stay in reach. Simulated flying laps: 79.5-81.6 s when far ahead, 75-77 s at level pace. dev/ai-race-test.mjs: all cars finish with 0 wall and 0 car contacts; overtake and recovery tests unchanged.",
+      "scripts/shot.mjs: added --uncapped (vsync off, for real FPS headroom) and --dpr N.",
+      "README.md written: run instructions, controls, URL params, architecture/module map, tech highlights, testing API. CONTRACTS.md: integration notes appended.",
+      "Verification: vite build has no errors or warnings, and the production preview runs clean. Menu has zero console messages. Enter, intro, countdown, racing, pause (Esc/P, resume, restart from pause), finish orbit, results, and Enter to race again all work. Manual driving: acceleration about 104 km/h in 3.5 s, steering correct, handbrake drift holds 30-44° and recovers, nitro, barrier push-back with sparks, C cycles all 4 cameras, R resets to centerline. Full races: 1-lap at timescale 3 and the default 3-lap both finish with every car (laps 74.9-81.7 s, lap counter, positions and best lap correct, errors {}). Also ran ai=0, ai=7, quality=low and nofx=1.",
+      "Performance at 1920x1080, quality high, M2 Pro: 60 fps with vsync on (the 4 s rAF measurement read 60.0-60.2). With --uncapped: about 160 fps in motion (about 6 ms per frame) and about 186 on a frozen frame. Quality low uncapped: about 225-250 fps, roughly 40% cheaper, plus pixel ratio 1.0 instead of 1.5 on HiDPI screens. Draw calls 260-340 per frame on high and 150-200 on low, counting the shadow and reflection passes; 1.7-2.0M triangles."
+    ],
+    "remaining_issues": [
+      "No human hands-on playtest was possible. Keyboard feel and the new difficulty calibration rest on scripted inputs and the dynamics team's keyboard simulator (79-84 s laps, 4-21 light wall touches).",
+      "An AI-only race is still a procession: the finishing order is deterministic, and AI lap times (75-80 s) are at the top of the 55-75 s target because the circuit is limited by cornering.",
+      "No soft particles. Tyre smoke and mist cut through car bodies with hard edges; in heavy smoke the car's rear looks semi-transparent.",
+      "Nitro and exhaust flames reflect very strongly in the wet road: a large blue-white streak under the car while boosting.",
+      "Puddle reflections sometimes read as flat neon-coloured patches. The far skyline is simple boxes. Building facades are not lit by streetlight pools.",
+      "In the hood view, a headlight hitting a nearby barrier still shows a hard-edged bright disc (dimmed, not removed).",
+      "Audio is verified only analytically and by checking the context is running (worklet engine, no errors); its timbre has not been judged by ear.",
+      "Gamepad mapping is untested on hardware. Rain is not occluded and falls under the overpass. Blade signs need CJK system fonts.",
+      "There is no launch-window indicator, so a perfect launch is a hidden timing skill.",
+      "Performance was measured on an M2 Pro (16-core GPU), not a base M2. WebGL timer queries on Apple's tile-based GPUs are unreliable, so throughput was judged from uncapped rAF FPS. The estimate for a base M2 at about 1080p is about 100 fps; adaptive resolution covers slower machines.",
+      "The debug teleport API leaves odd gear selection (syncGear can pick 6th at 180 km/h). This affects testing only."
+    ],
+    "polish_opportunities": [
+      {
+        "item": "Human playtest pass on keyboard steering ramps, drift entry/exit, brake-to-drift threshold and AI difficulty (AI_SKILL spread, rubber-band strength).",
+        "files": "src/core/input.js, src/vehicle/physics.js, src/vehicle/ai.js, src/core/game.js",
+        "impact": "Highest feel impact: decides whether the demo is fun and winnable on the first or second try"
+      },
+      {
+        "item": "Soft particles: give the smoke and mist shaders a depth fade, using a depth texture on the RenderPass target or a cheap depth pre-pass, so puffs stop slicing through cars.",
+        "files": "src/fx/particles.js, src/fx/postfx.js",
+        "impact": "High visual: removes the ghosted-car look during launches and drifts"
+      },
+      {
+        "item": "Lower the bright-source reflection boost for exhaust and nitro flames on the wet road, and/or flame intensity in the reflection pass.",
+        "files": "src/world/wetShader.js, src/vehicle/carModel.js, src/fx/particles.js",
+        "impact": "High visual during nitro, the most frequent hero moment"
+      },
+      {
+        "item": "Soften puddle mask edges and add more detail inside reflections, so large uniform neon glows don't show as flat coloured patches.",
+        "files": "src/world/wetShader.js",
+        "impact": "Medium-high: the wet road is the signature look"
+      },
+      {
+        "item": "Show a launch-window band on the tach during the countdown, plus a PERFECT/GOOD launch cue.",
+        "files": "src/ui/hud.js, src/core/game.js",
+        "impact": "Medium feel: makes an existing mechanic visible"
+      },
+      {
+        "item": "More varied AI racing: per-lap pace variation, occasional mistakes, defensive and aggressive lines, so AI cars swap positions among themselves.",
+        "files": "src/vehicle/ai.js",
+        "impact": "Medium: a livelier pack when the player is not involved"
+      },
+      {
+        "item": "Light building facades with streetlight pools and add interior-parallax windows.",
+        "files": "src/world/city.js, src/world/lamps.js",
+        "impact": "Medium visual realism at street level"
+      },
+      {
+        "item": "Occlude rain under the overpass deck, using a height mask from the deck footprint.",
+        "files": "src/fx/rain.js, src/world/props.js",
+        "impact": "Low-medium visual correctness"
+      },
+      {
+        "item": "Cheaper anti-aliasing: SMAA costs about 0.65 ms and FXAA about 0.45 ms at 1080p. Write the cinematic output to an 8-bit target before AA, or use a lighter AA on low.",
+        "files": "src/fx/postfx.js",
+        "impact": "Low-medium performance headroom for base M2 / HiDPI"
+      },
+      {
+        "item": "Richer far skyline (stepped silhouettes, lit crowns) and less blotchy floor lighting.",
+        "files": "src/world/city.js, src/world/sky.js",
+        "impact": "Low-medium visual on long straights"
+      }
+    ],
+    "screenshots": [
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/int-menu-a.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/int-flow-cd.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/int-go2-g2.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/int-flow-race.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/int-perfu-a.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/int-tour-t1.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/int-tour-chicane.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/int-tour-hairpin.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/int-drift-drift1.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/int-beam-wallR.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/int-final-hood.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/int-pause-sel.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/int-race1-p5.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/int-attract-s2.png"
+    ]
+  }
+}

@@ -1,0 +1,113 @@
+{
+  "workflow": "02-polish",
+  "label": "verify",
+  "phase": "Verify",
+  "role": "Final verifier / release engineer",
+  "owned_files": [
+    "all"
+  ],
+  "mission": "Resolve cross-module notes, vite build, regression screenshot pass on every camera and moment, full 3-lap race, quality=low run, 1080p performance against the baseline, fix regressions, update README and CONTRACTS.",
+  "effort": "high",
+  "model": "claude-opus-5-5",
+  "started_local": "2026-10-05 03:51",
+  "ended_local": "2026-10-05 04:27",
+  "duration_min": 36.3,
+  "api_calls": 126,
+  "tool_calls": 143,
+  "tools_by_name": {
+    "Bash": 102,
+    "Read": 39,
+    "Edit": 1,
+    "StructuredOutput": 1
+  },
+  "tokens": {
+    "output": 99773,
+    "cache_read": 25627820,
+    "cache_write": 312446,
+    "input": 252
+  },
+  "structured_report": {
+    "build_ok": true,
+    "full_race_ok": true,
+    "fps_1080p_vsync": 60.1,
+    "fps_1080p_uncapped": 146,
+    "draw_calls": "237–312 per race frame on high at 1080p, including shadow and reflection passes (pre-polish baseline 250–340); 156–165 on low",
+    "issue_status": [
+      {
+        "issue": "#1 Speed-blur ghosting at 180+ km/h",
+        "status": "fixed",
+        "note": "Checked chase-far and chase-near at 206, 239 and 306 km/h: no magnified copies of the car. The fx agent's per-camera focus API was not called by core, so the bonnet still got blurred in hood view. I wired it in game.js (BLUR_FOCUS, set only when the camera mode changes). Hood at 270 km/h keeps the bonnet sharp."
+      },
+      {
+        "issue": "#2 Wet-road mirror too perfect",
+        "status": "fixed",
+        "note": "The player car's reflection is now a faint dark smear, with no readable livery at 188–306 km/h. Neon, streetlight and tail-light streaks are kept. Bright emissives (a rival's tail lights, a lamp ahead) still mirror crisply at half resolution near the car. That is by design."
+      },
+      {
+        "issue": "#3 Nitro flame reflections / bloom bomb",
+        "status": "fixed",
+        "note": "No blue blobs under the car in chase-far, chase-near or hood. The real cause was a stale-slot bug: 24 old flames trailed behind each car. Now exactly 4 flame slots are live at 225 km/h (particles.stats). Core now passes the car velocity to emitNitroFlame. Flames are compact and on NO_REFLECTION."
+      },
+      {
+        "issue": "#4 Steam plumes = white walls",
+        "status": "fixed",
+        "note": "Drove through the vent at s=300 in chase and hood views. The plumes are wispy and lamp-tinted, with no white-out."
+      },
+      {
+        "issue": "#5 Headlight beam on road (bat-wing)",
+        "status": "fixed",
+        "note": "The low-beam light cookie gives a soft, even pool in hood and bumper views, with no hard edge. In hood view it is subtle (core still applies the 0.6 hood factor)."
+      },
+      {
+        "issue": "#6 Hood cam paint",
+        "status": "fixed",
+        "note": "Hood view now shows smooth glossy reflections, crisp analytic stripes, slatted vents and rain beads. The hood is rigidly mounted and fills about 15–20% of the frame."
+      },
+      {
+        "issue": "#7 Headlight glare on cars ahead",
+        "status": "fixed",
+        "note": "The white GHOST 5.5 m and 8 m ahead reads lit, not nuked, in chase-far, chase-near, hood and bumper. Barriers were a separate problem the polish introduced, now fixed (see regressions_fixed)."
+      },
+      {
+        "issue": "#8 Buildings up close",
+        "status": "improved",
+        "note": "Close-ups show window frames and mullions, recessed reveals, interior-mapped rooms, storefront depth and the sodium/LED street-light wash on the lower floors. The far skyline is no longer pixelated, but across the waterfront it reads fairly flat and pale."
+      },
+      {
+        "issue": "#9 Gameplay: launch indicator + AI procession",
+        "status": "improved",
+        "note": "Launch control is visible: amber and green tach bands with 'LAUNCH ✓', and a PERFECT LAUNCH flash at GO. AI-vs-AI position changes do happen but are modest: 2 in an in-game 3-lap autopilot race, and 1 in dev/ai-race-test. The finish spread is tight (2.6 s) and no car hit a wall."
+      }
+    ],
+    "regressions_fixed": [
+      "Barrier headlight blow-out caused by the new low-beam cookie. Its hot zone is about 5.7× the new 1800 cd base intensity, roughly 11× the light core's old wall cap assumed (isotropic 900 cd lamp, distance only), so barriers 10–20 m ahead got 90–200 lx and bloomed white (worst in drifts and corners). I replaced Game._beamObstacleDistance with _beamWallIlluminance in src/core/game.js. It marches 5 rays (0, ±11°, ±26°, out to 26 m) to the barrier face and evaluates spot cone × lowBeamProfile × incidence / d² over the barrier height. That is weighted by paint albedo (painted corner blocks 0.65, concrete 0.28; _barrierPainted mirrors track.js) and capped at BEAM.wallLum = 4.7 (diffuse luminance about 1.5). Result: drift and corner barriers read as lit with no haze, and in the lane centre on a straight the headlights stay at 98%.",
+      "The hood and bumper cams used the chase speed-blur focus, so the bonnet was blurred. Core now calls postfx.set({focus, focusRadius}) per camera mode (game.js BLUR_FOCUS).",
+      "Polish performance cost: the SpotLight.map cookie added a projected-coordinate varying and a texture fetch to every lit program, about 0.35 ms at 1080p. Building and skyline shaders are now compiled without spot lights (city.js stripSpotLights, material.userData.noSpots, cache key v3). three.js substitutes light counts textually, so the chunks are inlined with the counts forced to 0. That saves about 0.2 ms with a pixel-identical frame (max difference 7/255). Uncapped fps went from about 139 to about 146 on average.",
+      "core/effects.js now passes the car velocity to emitNitroFlame (an fx cross-module note), so a new flame slot is exact from its first frame.",
+      "Four dev benches (dev/world.html, fx.html, physics.html, audio.html) logged a favicon 404 console error. I added the inline data: icon the game page already uses."
+    ],
+    "remaining_issues": [
+      "Uncapped 1080p high is 136–155 fps (about 146 average) against the pre-polish ≈160. Roughly 0.4–0.5 ms per frame of polish cost remains: the cookie on road, car and props materials (about 0.15 ms), the facade near-path (about 0.13 ms), the road's soft reflection taps and the radial pre-pass. Vsync still holds a steady 60, and low quality runs 190–205 fps uncapped.",
+      "The headlight exposure cap is a trade-off. Hugging a barrier (about 4 m lateral) dims the spots to 20–45%, and a car close ahead dims them to about 1–6%, so the road pool fades (only the 0.10-gain decal remains). It can be tuned live via window.__game.beamTune.",
+      "AI-vs-AI racing is better but still fairly processional in-game: 2 swaps in a 3-lap autopilot race and 1 in the Node ai-race-test. Lap times are 75–76 s, slightly above the contract's 55–75 s target. A real keyboard playtest for difficulty has not been done.",
+      "quality=low puddles still mirror the PMREM lamp spheres as bright spots near the car. This predates the polish (the low path is unchanged).",
+      "The far skyline across the waterfront is smooth now but reads flat and pale.",
+      "The steam plumes don't use fx's optional soft-particle depth fade; they rely on camera-distance and ground fades. No hard intersections were seen in testing.",
+      "A rival's tail lights mirror crisply but slightly pixelated (half-res reflection) right in front of the hood cam."
+    ],
+    "showcase_screenshots": [
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/showcase/01-menu.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/showcase/02-countdown-launch-band.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/showcase/03-perfect-launch.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/showcase/04-racing-239kmh.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/showcase/05-nitro.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/showcase/06-nitro-306kmh-chase-near.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/showcase/07-corner-battle.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/showcase/08-drift.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/showcase/09-rain-neon-wet-street.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/showcase/10-hood-cam-ghost-lit.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/showcase/11-street-facades.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/showcase/12-results.png"
+    ]
+  }
+}

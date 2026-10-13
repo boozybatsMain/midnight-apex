@@ -1,0 +1,679 @@
+{
+  "schema": "midnight-apex-process/v1",
+  "game": {
+    "title": "MIDNIGHT APEX",
+    "subtitle": "Neon District Circuit",
+    "one_liner": "Rain-soaked neon downtown street race at night: player vs 4 AI rivals, 3 laps on a 2.9 km circuit, everything (meshes, textures, sounds, music) generated in code.",
+    "stack": [
+      "three.js r186 (WebGLRenderer)",
+      "Vite 8",
+      "plain JavaScript ES modules",
+      "WebAudio + AudioWorklet",
+      "playwright-core + system Google Chrome for headless verification"
+    ],
+    "external_assets": "none (procedural only; Google Fonts for the HUD typeface)",
+    "source": "Repository root. Commit 3ff63c6 is the game exactly as created; later commits add Genex publishing glue and docs/process.",
+    "code_lines": {
+      "src/world": 4941,
+      "src/vehicle": 4506,
+      "src/core": 3302,
+      "src/ui": 3293,
+      "src/fx": 2847,
+      "src/audio": 2569,
+      "src (root files)": 239,
+      "dev benches + scripts (not shipped)": 3138
+    }
+  },
+  "request": {
+    "received_local": "2026-10-04 23:07 (UTC+5)",
+    "text": "workflow Create a hyper-realistic NFS-inspired racing game (one highly polished, fully playable demo scene)",
+    "interpretation": "The leading word 'workflow' was an explicit opt-in to multi-agent orchestration with the Workflow tool. 'One highly polished, fully playable demo scene' was read as: narrow scope, maximum polish, complete game loop from menu to results."
+  },
+  "model": {
+    "lead": "claude-opus-5-5",
+    "subagents": "claude-opus-5-5, inherited from the session with no per-agent override. Builders, integrator, polishers and verifier ran at effort 'high'.",
+    "evidence": "All 3,752 API responses in the session and subagent transcripts report model claude-opus-5-5."
+  },
+  "timeline_local_utc_plus_5": [
+    {
+      "time": "2026-10-04 23:07",
+      "who": "lead",
+      "what": "Prompt received; loaded the workflow-authoring reference."
+    },
+    {
+      "time": "23:07-23:18",
+      "who": "lead",
+      "what": "Scaffold: environment check (Node 24, M2 Pro, system Chrome present, no Playwright browsers), npm install three/vite/playwright-core, headless screenshot harness scripts/shot.mjs, found port 5173 taken by another project and moved the dev server to 5391, wrote src/config.js, CONTRACTS.md, contract-compliant stubs for every module, Node-safe track path."
+    },
+    {
+      "time": "23:18",
+      "who": "lead",
+      "what": "Launched workflow 1 'midnight-apex-build' (7 parallel builders, then 1 integrator); scheduled a 30-minute fallback wake-up."
+    },
+    {
+      "time": "23:18-01:31",
+      "who": "7 builders",
+      "what": "Parallel module builds with their own bench pages and screenshot loops (HUD finished first at 00:02, car last at 01:31)."
+    },
+    {
+      "time": "01:11",
+      "who": "system",
+      "what": "The lead's background dev server hit the 2-hour background limit; builders restarted it themselves as instructed."
+    },
+    {
+      "time": "01:31-02:20",
+      "who": "integrator",
+      "what": "Cross-module fixes, build, end-to-end race, performance, README."
+    },
+    {
+      "time": "02:21-02:28",
+      "who": "lead",
+      "what": "Review via screenshots at 1600x900: menu, intro, countdown, launch, speed, nitro, autopilot lap tour, all 4 cameras, 1-lap race to results, zoomed crops. Found 9 issues. Added LAYERS.NO_REFLECTION to config.js and CONTRACTS.md."
+    },
+    {
+      "time": "02:28",
+      "who": "lead",
+      "what": "Launched workflow 2 'midnight-apex-polish' (4 parallel polishers, then 1 verifier)."
+    },
+    {
+      "time": "02:28-03:51",
+      "who": "4 polishers",
+      "what": "Targeted fixes per issue list, each in its own file set."
+    },
+    {
+      "time": "03:51-04:27",
+      "who": "verifier",
+      "what": "Cross-module wiring, build, regression screenshots, 3-lap race, performance, regression fixes, docs."
+    },
+    {
+      "time": "04:27-04:35",
+      "who": "lead",
+      "what": "Final vite build, 1080p runtime check (60 fps, 257 draw calls, no errors), removed 2.1 GB of throwaway test screenshots, kept 12 showcase shots, added .gitignore."
+    },
+    {
+      "time": "2026-10-05 12:50",
+      "who": "lead",
+      "what": "Added .claude/launch.json so the desktop app's preview starts the game on port 5391 (it had tried the Vite default 5173)."
+    }
+  ],
+  "principles": [
+    {
+      "id": "scope",
+      "principle": "Interpret the prompt narrowly and deeply.",
+      "why": "'One highly polished demo scene' means attention goes into one complete race, one hero car and four rivals rather than police, traffic or an open world. Scope is an attention budget."
+    },
+    {
+      "id": "setting",
+      "principle": "Choose the setting where a browser can look most realistic.",
+      "why": "A rainy neon night hides geometric simplicity; wet reflections, emissive neon, bloom and fog do most of the visual work cheaply, and it is the iconic NFS Underground/Heat look."
+    },
+    {
+      "id": "procedural",
+      "principle": "Everything procedural, no external assets.",
+      "why": "No downloads, licensing or loading risk; one art direction controlled in code. Trade-off: the realism ceiling of a code-built car and a synthesized engine sound."
+    },
+    {
+      "id": "contract-first",
+      "principle": "Write the contract before spawning agents.",
+      "why": "CONTRACTS.md fixed every module API, units, axes and sign conventions (heading, steer +1 = right, car-local +X = left, lateral + = right), file ownership, performance budget and test harness. Seven agents could then build in parallel without seeing each other's code."
+    },
+    {
+      "id": "stubs",
+      "principle": "Ship working stubs for every module first.",
+      "why": "Every import resolved from the start, so the core agent could run the whole game while other modules were still being written, and real modules swapped in through hot reload."
+    },
+    {
+      "id": "ownership",
+      "principle": "One owner per file.",
+      "why": "No merge conflicts and no git worktrees; only the integrator and verifier touch everything."
+    },
+    {
+      "id": "eyes",
+      "principle": "Every agent looks at its own output.",
+      "why": "Each builder had a bench page for its module plus a headless-Chrome screenshot harness on the real GPU, so it could iterate 'build, screenshot, look, fix' many times in minutes."
+    },
+    {
+      "id": "verify-split",
+      "principle": "Verify objective things automatically and taste by eye.",
+      "why": "Automated: build passes, full race reaches the results screen, fps, console errors, Node physics/AI tests. Looks: screenshots at real resolution judged against an AAA bar."
+    },
+    {
+      "id": "lead-in-loop",
+      "principle": "One workflow per phase, with the lead in between.",
+      "why": "The lead read results, played the build through screenshots and chose the next phase from evidence instead of pre-planning every round."
+    },
+    {
+      "id": "polish-phase",
+      "principle": "Polish is its own phase, driven by a concrete defect list.",
+      "why": "Nine specific defects, each with screenshots and an owner, instead of 'make it better'."
+    },
+    {
+      "id": "conventions-via-contract",
+      "principle": "Add cross-module conventions through the contract.",
+      "why": "When flames and particles had to stay out of the wet-road reflection, the lead added LAYERS.NO_REFLECTION to config.js and CONTRACTS.md before the polishers started, instead of letting agents edit each other's files."
+    },
+    {
+      "id": "test-hooks",
+      "principle": "Minimal, honest test hooks.",
+      "why": "window.__game telemetry plus URL params (autostart, autopilot, laps, timescale, quality). Autopilot reuses the opponents' AI driver, which doubles as attract mode and automated test driver."
+    },
+    {
+      "id": "budget",
+      "principle": "State the performance budget up front.",
+      "why": "60 fps at 1080p on an M2 Pro was in the contract; the integrator and the verifier both measured against it."
+    }
+  ],
+  "scaffold_by_lead": [
+    {
+      "file": "package.json",
+      "why": "three, vite, playwright-core; dev server pinned to port 5391 with --strictPort after finding 5173 used by another project."
+    },
+    {
+      "file": "scripts/shot.mjs",
+      "why": "Headless test harness using system Google Chrome (no browser download): key holds, clicks, JS eval, fps measurement, screenshots, console and page-error capture."
+    },
+    {
+      "file": "vite.config.js",
+      "why": "Dev server config; dev/*.html bench pages included in the build."
+    },
+    {
+      "file": "src/config.js",
+      "why": "Shared constants (car dimensions, liveries, track width, race settings), URL params and math/heading helpers every module uses."
+    },
+    {
+      "file": "CONTRACTS.md",
+      "why": "The single source of truth for APIs, conventions, file ownership and the test harness."
+    },
+    {
+      "file": "src/** stubs",
+      "why": "Crude but contract-compliant versions of track, environment, car, physics, AI, post-fx, particles, rain, audio and HUD so everything ran from the start."
+    }
+  ],
+  "workflows": [
+    {
+      "name": "midnight-apex-build",
+      "script": "docs/process/workflows/01-build.workflow.js",
+      "shape": "parallel(7 builders) -> barrier -> 1 integrator",
+      "why_barrier": "Integration needs every module finished, so a barrier was correct here rather than a pipeline.",
+      "prompt_structure": "Shared preamble (project, read CONTRACTS.md first, file-ownership rules, dev server and harness usage, quality bar, 60 fps budget) + a module brief + a JSON schema forcing a structured report (files, summary, contract_notes, known_issues, perf_notes, screenshots).",
+      "duration_wall": "3 h 03 min"
+    },
+    {
+      "name": "midnight-apex-polish",
+      "script": "docs/process/workflows/02-polish.workflow.js",
+      "shape": "parallel(4 polishers) -> barrier -> 1 verifier",
+      "why_barrier": "The verifier needs all polish results and their cross-module notes together.",
+      "prompt_structure": "The lead's 9-issue review list with screenshot paths, the new LAYERS convention, a per-polisher assignment of issue numbers and owned files, and a schema forcing per-issue fix/verified reports.",
+      "duration_wall": "1 h 59 min"
+    }
+  ],
+  "agents": [
+    {
+      "workflow": "01-build",
+      "label": "build:world",
+      "phase": "Build",
+      "role": "Track + night-city environment",
+      "owned_files": [
+        "src/world/*.js",
+        "dev/world.html"
+      ],
+      "mission": "Design a 2.4-3.2 km closed street circuit (pure-math, Node-safe TrackPath + meshes), wet-road shader with planar reflection and analytic streetlight pools, dense procedural downtown (instanced/merged buildings, window atlases, neon signs, billboards, streetlights, traffic lights, overpass), night sky, fog, moonlight shadows, PMREM env map.",
+      "effort": "high",
+      "model": "claude-opus-5-5",
+      "started_local": "2026-10-04 23:18",
+      "ended_local": "2026-10-05 01:22",
+      "duration_min": 124.5,
+      "api_calls": 157,
+      "tool_calls": 174,
+      "tokens": {
+        "output": 358095,
+        "cache_read": 59268062,
+        "cache_write": 578948,
+        "input": 314
+      },
+      "report_file": "agent-reports/01-build__build-world.json"
+    },
+    {
+      "workflow": "01-build",
+      "label": "build:audio",
+      "phase": "Build",
+      "role": "Procedural audio",
+      "owned_files": [
+        "src/audio/*.js",
+        "dev/audio.html"
+      ],
+      "mission": "All sounds synthesized with WebAudio: AudioWorklet V8 engine (firing-frequency synthesis, exhaust resonances, on/off-throttle character, limiter), turbo and blow-off, opponents, tire screech, wind and rain, impacts, scrapes, UI, procedural synthwave music; verified analytically with OfflineAudioContext.",
+      "effort": "high",
+      "model": "claude-opus-5-5",
+      "started_local": "2026-10-04 23:18",
+      "ended_local": "2026-10-05 00:42",
+      "duration_min": 84.1,
+      "api_calls": 66,
+      "tool_calls": 66,
+      "tokens": {
+        "output": 220098,
+        "cache_read": 16016385,
+        "cache_write": 644263,
+        "input": 132
+      },
+      "report_file": "agent-reports/01-build__build-audio.json"
+    },
+    {
+      "workflow": "01-build",
+      "label": "build:car",
+      "phase": "Build",
+      "role": "Procedural hero car model",
+      "owned_files": [
+        "src/vehicle/carModel.js",
+        "src/vehicle/car*.js",
+        "dev/car.html"
+      ],
+      "mission": "Lofted smooth supercar body from profile curves, greenhouse with tinted glass, clear-coat flake paint, carbon accents, livery decals, LED head/tail lights, real SpotLights for the player, multi-spoke rims, brake discs/calipers, contact shadow, visual suspension; about 25 draw calls per car at most.",
+      "effort": "high",
+      "model": "claude-opus-5-5",
+      "started_local": "2026-10-04 23:18",
+      "ended_local": "2026-10-05 01:31",
+      "duration_min": 133.1,
+      "api_calls": 202,
+      "tool_calls": 215,
+      "tokens": {
+        "output": 367933,
+        "cache_read": 80005860,
+        "cache_write": 955350,
+        "input": 404
+      },
+      "report_file": "agent-reports/01-build__build-car.json"
+    },
+    {
+      "workflow": "01-build",
+      "label": "build:dynamics",
+      "phase": "Build",
+      "role": "Vehicle physics + AI drivers",
+      "owned_files": [
+        "src/vehicle/physics.js",
+        "src/vehicle/ai.js",
+        "dev/physics.html",
+        "dev/*.mjs"
+      ],
+      "mission": "Single-track model with Pacejka-style tires, load transfer, friction circle, 6-speed automatic, nitro, handbrake drifts with counter-steer assist; AI with cached racing line, speed profile, pure pursuit, overtaking, rubber-banding, recovery. Verified with Node test scripts (0-100, top speed, braking, lateral g, 5-car 3-lap AI race).",
+      "effort": "high",
+      "model": "claude-opus-5-5",
+      "started_local": "2026-10-04 23:18",
+      "ended_local": "2026-10-05 00:33",
+      "duration_min": 75.7,
+      "api_calls": 95,
+      "tool_calls": 103,
+      "tokens": {
+        "output": 230625,
+        "cache_read": 27827024,
+        "cache_write": 441746,
+        "input": 190
+      },
+      "report_file": "agent-reports/01-build__build-dynamics.json"
+    },
+    {
+      "workflow": "01-build",
+      "label": "build:fx",
+      "phase": "Build",
+      "role": "Post-processing, particles, rain",
+      "owned_files": [
+        "src/fx/*.js",
+        "dev/fx.html"
+      ],
+      "mission": "EffectComposer chain (bloom tuned for HDR emissives, one cinematic pass with radial speed blur, chromatic aberration, vignette, grain, grade, impact flash, SMAA); pooled GPU particles (smoke, wet spray, sparks, nitro flames, skid marks); camera-following rain with splashes.",
+      "effort": "high",
+      "model": "claude-opus-5-5",
+      "started_local": "2026-10-04 23:18",
+      "ended_local": "2026-10-05 00:55",
+      "duration_min": 97.3,
+      "api_calls": 152,
+      "tool_calls": 188,
+      "tokens": {
+        "output": 232622,
+        "cache_read": 45948427,
+        "cache_write": 421995,
+        "input": 304
+      },
+      "report_file": "agent-reports/01-build__build-fx.json"
+    },
+    {
+      "workflow": "01-build",
+      "label": "build:hud",
+      "phase": "Build",
+      "role": "HUD and menus",
+      "owned_files": [
+        "src/ui/hud.js",
+        "src/ui/hud.css",
+        "dev/hud.html"
+      ],
+      "mission": "NFS-inspired DOM/CSS + canvas HUD: tachometer with redline and shift light, digital speed and gear, nitro bar, position/lap/timers, rotating minimap, center flashes, countdown, title menu, pause, results screen.",
+      "effort": "high",
+      "model": "claude-opus-5-5",
+      "started_local": "2026-10-04 23:18",
+      "ended_local": "2026-10-05 00:02",
+      "duration_min": 44.8,
+      "api_calls": 80,
+      "tool_calls": 98,
+      "tokens": {
+        "output": 169440,
+        "cache_read": 18820291,
+        "cache_write": 352784,
+        "input": 160
+      },
+      "report_file": "agent-reports/01-build__build-hud.json"
+    },
+    {
+      "workflow": "01-build",
+      "label": "build:core",
+      "phase": "Build",
+      "role": "Game core and glue",
+      "owned_files": [
+        "index.html",
+        "src/main.js",
+        "src/style.css",
+        "src/core/*.js"
+      ],
+      "mission": "Renderer setup, fixed-step physics loop, state machine (menu, intro, countdown, racing, finished, pause), lap/checkpoint/position logic, chase/hood/bumper cameras, keyboard and gamepad input, barrier and car-car collisions, effect/audio/HUD wiring, window.__game debug API and URL params for automated tests.",
+      "effort": "high",
+      "model": "claude-opus-5-5",
+      "started_local": "2026-10-04 23:18",
+      "ended_local": "2026-10-05 01:25",
+      "duration_min": 127.0,
+      "api_calls": 197,
+      "tool_calls": 212,
+      "tokens": {
+        "output": 250440,
+        "cache_read": 62228955,
+        "cache_write": 465591,
+        "input": 394
+      },
+      "report_file": "agent-reports/01-build__build-core.json"
+    },
+    {
+      "workflow": "01-build",
+      "label": "integrate",
+      "phase": "Integrate",
+      "role": "Integrator / lead engineer",
+      "owned_files": [
+        "all"
+      ],
+      "mission": "Check every cross-module call against real exports and sign conventions, make vite build pass, run menu to results end to end, manual driving, full autopilot races, 1080p performance, visual sanity pass, write README.",
+      "effort": "high",
+      "model": "claude-opus-5-5",
+      "started_local": "2026-10-05 01:31",
+      "ended_local": "2026-10-05 02:20",
+      "duration_min": 49.6,
+      "api_calls": 136,
+      "tool_calls": 161,
+      "tokens": {
+        "output": 115230,
+        "cache_read": 38758457,
+        "cache_write": 413202,
+        "input": 272
+      },
+      "report_file": "agent-reports/01-build__integrate.json"
+    },
+    {
+      "workflow": "02-polish",
+      "label": "polish:world",
+      "phase": "Polish",
+      "role": "World polisher",
+      "owned_files": [
+        "src/world/*.js",
+        "dev/world.html"
+      ],
+      "mission": "Issues 2 (wet-road mirror too perfect: Fresnel + luminance-dependent blur), 3 world side (reflection camera excludes LAYERS.NO_REFLECTION, HDR soft knee), 4 (steam plumes as wispy lit volumes), 8 (facade close-up detail: analytic windows, interior mapping, street-light wash).",
+      "effort": "high",
+      "model": "claude-opus-5-5",
+      "started_local": "2026-10-05 02:28",
+      "ended_local": "2026-10-05 03:29",
+      "duration_min": 60.5,
+      "api_calls": 143,
+      "tool_calls": 180,
+      "tokens": {
+        "output": 166958,
+        "cache_read": 38327787,
+        "cache_write": 731250,
+        "input": 286
+      },
+      "report_file": "agent-reports/02-polish__polish-world.json"
+    },
+    {
+      "workflow": "02-polish",
+      "label": "polish:car",
+      "phase": "Polish",
+      "role": "Car polisher",
+      "owned_files": [
+        "src/vehicle/car*.js",
+        "dev/car.html"
+      ],
+      "mission": "Issues 3 car side (flames and beam decal on NO_REFLECTION layer, believable flame), 5 (soft realistic low-beam pattern with SpotLight cookie), 6 (hood-cam paint without blocky reflections, crisp livery), 7 car side (no extreme HDR highlights from headlights).",
+      "effort": "high",
+      "model": "claude-opus-5-5",
+      "started_local": "2026-10-05 02:28",
+      "ended_local": "2026-10-05 03:14",
+      "duration_min": 45.7,
+      "api_calls": 133,
+      "tool_calls": 157,
+      "tokens": {
+        "output": 168104,
+        "cache_read": 40295416,
+        "cache_write": 413602,
+        "input": 266
+      },
+      "report_file": "agent-reports/02-polish__polish-car.json"
+    },
+    {
+      "workflow": "02-polish",
+      "label": "polish:fx",
+      "phase": "Polish",
+      "role": "FX polisher",
+      "owned_files": [
+        "src/fx/*.js",
+        "dev/fx.html"
+      ],
+      "mission": "Issue 1 (speed-blur ghosting: jittered taps + protected car region), soft particles via scene depth, flames/sparks/rain on NO_REFLECTION, no opaque spray clouds, anamorphic streaks only for hot emissives.",
+      "effort": "high",
+      "model": "claude-opus-5-5",
+      "started_local": "2026-10-05 02:28",
+      "ended_local": "2026-10-05 03:51",
+      "duration_min": 82.5,
+      "api_calls": 204,
+      "tool_calls": 217,
+      "tokens": {
+        "output": 238050,
+        "cache_read": 70596107,
+        "cache_write": 513302,
+        "input": 408
+      },
+      "report_file": "agent-reports/02-polish__polish-fx.json"
+    },
+    {
+      "workflow": "02-polish",
+      "label": "polish:gameplay",
+      "phase": "Polish",
+      "role": "Gameplay polisher",
+      "owned_files": [
+        "src/main.js",
+        "src/core/*.js",
+        "src/ui/*",
+        "src/vehicle/physics.js",
+        "src/vehicle/ai.js",
+        "src/audio/*.js"
+      ],
+      "mission": "Issue 7 core side (headlight cap so cars ahead are lit, not blown out), NO_REFLECTION layer on all cameras, hood-cam placement, issue 9 (visible launch window + PERFECT/GOOD launch flash, AI racecraft with pace variation and AI-vs-AI overtakes), feel and audio-mix sanity.",
+      "effort": "high",
+      "model": "claude-opus-5-5",
+      "started_local": "2026-10-05 02:28",
+      "ended_local": "2026-10-05 03:43",
+      "duration_min": 74.3,
+      "api_calls": 200,
+      "tool_calls": 211,
+      "tokens": {
+        "output": 206844,
+        "cache_read": 69907446,
+        "cache_write": 535664,
+        "input": 400
+      },
+      "report_file": "agent-reports/02-polish__polish-gameplay.json"
+    },
+    {
+      "workflow": "02-polish",
+      "label": "verify",
+      "phase": "Verify",
+      "role": "Final verifier / release engineer",
+      "owned_files": [
+        "all"
+      ],
+      "mission": "Resolve cross-module notes, vite build, regression screenshot pass on every camera and moment, full 3-lap race, quality=low run, 1080p performance against the baseline, fix regressions, update README and CONTRACTS.",
+      "effort": "high",
+      "model": "claude-opus-5-5",
+      "started_local": "2026-10-05 03:51",
+      "ended_local": "2026-10-05 04:27",
+      "duration_min": 36.3,
+      "api_calls": 126,
+      "tool_calls": 143,
+      "tokens": {
+        "output": 99773,
+        "cache_read": 25627820,
+        "cache_write": 312446,
+        "input": 252
+      },
+      "report_file": "agent-reports/02-polish__verify.json"
+    }
+  ],
+  "lead_review_issues": [
+    {
+      "id": 1,
+      "issue": "Speed-blur ghosting: magnified copies of the car at 180+ km/h",
+      "owner": "fx"
+    },
+    {
+      "id": 2,
+      "issue": "Wet road mirrors the player's car too crisply (readable mirrored livery)",
+      "owner": "world"
+    },
+    {
+      "id": 3,
+      "issue": "Nitro flames reflected as huge blue blobs on the road",
+      "owner": "car + fx + world"
+    },
+    {
+      "id": 4,
+      "issue": "Steam plumes render as opaque white walls",
+      "owner": "world"
+    },
+    {
+      "id": 5,
+      "issue": "Hard-edged 'bat-wing' headlight pool on the road",
+      "owner": "car"
+    },
+    {
+      "id": 6,
+      "issue": "Blocky reflections and pixelated livery in the hood camera",
+      "owner": "car + core camera"
+    },
+    {
+      "id": 7,
+      "issue": "Player headlights blow a white car ahead out to pure white",
+      "owner": "core + car"
+    },
+    {
+      "id": 8,
+      "issue": "Street-level building facades read flat and procedural",
+      "owner": "world"
+    },
+    {
+      "id": 9,
+      "issue": "No visible launch-window indicator; AI-only racing is a procession",
+      "owner": "core + hud + dynamics"
+    }
+  ],
+  "verification": {
+    "after_integration": {
+      "build_ok": true,
+      "full_race_ok": true,
+      "manual_driving_ok": true,
+      "fps_1080p_vsync": 60,
+      "draw_calls": "260-340"
+    },
+    "after_polish": {
+      "build_ok": true,
+      "full_race_ok": true,
+      "fps_1080p_vsync": 60.1,
+      "fps_1080p_uncapped": 146,
+      "draw_calls_high": "237-312",
+      "draw_calls_low": "156-165",
+      "issue_status": {
+        "1": "fixed",
+        "2": "fixed",
+        "3": "fixed",
+        "4": "fixed",
+        "5": "fixed",
+        "6": "fixed",
+        "7": "fixed",
+        "8": "improved",
+        "9": "improved"
+      }
+    },
+    "lead_final_check": {
+      "vite_build": "pass",
+      "runtime_1080p": "60.2 fps, 257 draw calls, telemetry errors {}"
+    },
+    "not_verified": [
+      "No human has played it with a keyboard or gamepad; feel and difficulty were checked with scripted inputs only.",
+      "Engine timbre was verified analytically (spectra, levels), not by ear.",
+      "Gamepad mapping untested on hardware."
+    ]
+  },
+  "totals": {
+    "wall_clock": "about 5 h 30 min (23:07 -> 04:35 local)",
+    "subagents": 13,
+    "subagent_api_calls": 1891,
+    "subagent_tool_calls": 2125,
+    "subagent_tokens": {
+      "output": 2824212,
+      "cache_read": 593628037,
+      "cache_write": 6780143,
+      "input": 3782
+    },
+    "note": "Token figures are counted from Claude Code transcripts, deduplicated per message. cache_read dominates because every call re-reads the agent's context."
+  },
+  "problems_and_lessons": [
+    {
+      "problem": "Port 5173 was already used by another local project.",
+      "handling": "Moved the dev server to 5391 with --strictPort; told every agent never to use 5173."
+    },
+    {
+      "problem": "The lead's background dev server was stopped at the 2-hour background limit.",
+      "handling": "Agents had instructions to restart it detached if it was down, and did."
+    },
+    {
+      "problem": "Seven agents running headless-Chrome benches overloaded the machine (load average 40-240), making FPS numbers noisy and causing hot-reload interruptions.",
+      "handling": "Agents judged performance from draw calls, triangles and CPU timers; final FPS was measured after the agents finished."
+    },
+    {
+      "problem": "Agents saved test screenshots inside the project (2.1 GB).",
+      "handling": "Removed after delivery, kept 12 showcase shots. Lesson: send scratch output to a directory outside the project."
+    },
+    {
+      "problem": "The desktop app's preview tried port 5173.",
+      "handling": "Added .claude/launch.json pointing at port 5391."
+    },
+    {
+      "problem": "Genex asset tools (3D models, SFX, music) were not checked or used.",
+      "handling": "Acknowledged afterwards; the car and the engine sound would gain most from generated assets."
+    }
+  ],
+  "appendix": {
+    "genex_comparison": "docs/process/appendix/genex-comparison.html - post-hoc analysis comparing this process with a Genex Studio run of the same prompt (same model, similar active time)."
+  },
+  "contents": {
+    "docs/process/PROCESS.md": "Narrative description of the whole process, principles and decisions.",
+    "docs/process/process.json": "This file.",
+    "docs/process/workflows/": "The two Workflow scripts exactly as run.",
+    "docs/process/agent-reports/": "One JSON per subagent with mission, metrics and full structured report.",
+    "repository root": "The game source.",
+    "docs/process/appendix/genex-comparison.html": "Comparison page with embedded images."
+  }
+}

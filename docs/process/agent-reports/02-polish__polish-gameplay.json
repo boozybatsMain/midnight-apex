@@ -1,0 +1,111 @@
+{
+  "workflow": "02-polish",
+  "label": "polish:gameplay",
+  "phase": "Polish",
+  "role": "Gameplay polisher",
+  "owned_files": [
+    "src/main.js",
+    "src/core/*.js",
+    "src/ui/*",
+    "src/vehicle/physics.js",
+    "src/vehicle/ai.js",
+    "src/audio/*.js"
+  ],
+  "mission": "Issue 7 core side (headlight cap so cars ahead are lit, not blown out), NO_REFLECTION layer on all cameras, hood-cam placement, issue 9 (visible launch window + PERFECT/GOOD launch flash, AI racecraft with pace variation and AI-vs-AI overtakes), feel and audio-mix sanity.",
+  "effort": "high",
+  "model": "claude-opus-5-5",
+  "started_local": "2026-10-05 02:28",
+  "ended_local": "2026-10-05 03:43",
+  "duration_min": 74.3,
+  "api_calls": 200,
+  "tool_calls": 211,
+  "tools_by_name": {
+    "Bash": 161,
+    "Read": 46,
+    "Write": 2,
+    "ListAgents": 1,
+    "StructuredOutput": 1
+  },
+  "tokens": {
+    "output": 206844,
+    "cache_read": 69907446,
+    "cache_write": 535664,
+    "input": 400
+  },
+  "structured_report": {
+    "issues_addressed": [
+      {
+        "issue": "#7 Headlight glare on cars ahead (core side): a white GHOST a few metres ahead blew out to pure white with bloom and an anamorphic streak",
+        "fix": "I found two root causes. (1) The cap treated every obstacle like a diffuse barrier (illuminance at ~10 m). (2) three.js treats spot lights as infinitely small points, so on glossy clear-coat or tail trim the headlight highlight becomes a near-singular spike: the car stayed nuked even with the lamps at 2 %. Fixes: (a) a new Game._beamExposure works out each lamp's real illuminance on the nearest point of every car in the beam. It uses the spot's own cone falloff, 1/d², and the car polisher's low-beam cookie (lowBeamProfile, loaded via an optional namespace import with a conservative fallback). It samples 4 heights so the cut-off line crossing the car's rear is covered. The lamps are capped so a car gets at most 1.3 lx divided by its paint luminance: about 1.6 lx for white, more for dark liveries. The barrier cap and its floor are unchanged. It dims fast and recovers slowly, so there is no pumping. (b) A new src/core/shaderPatches.js widens the direct specular lobe for SPOT lights only, to roughness ≥ 0.36 and clear-coat ≥ 0.24 (the lamp lens has a real size). Environment reflections and the moon are untouched. Before/after: shots/polish-gameplay-glare-before-after.png; distances 7/9/12/18 m in shots/polish-gameplay-glr-cmp.png; cockpit cams in shots/polish-gameplay-glc-cmp.png; race start in shots/polish-gameplay-t1b-sheet.png. For live tuning: window.__game.beamTune.",
+        "verified": true
+      },
+      {
+        "issue": "New layer convention: LAYERS.NO_REFLECTION must be enabled on every game camera",
+        "fix": "camera.layers.enable(LAYERS.NO_REFLECTION) is called in Game.init and in the CameraRig constructor. Every mode (chase, hood, bumper, orbit, intro, finish) uses that one camera. The calibration raycaster stays on layer 0, so flames and the beam decal are ignored. Confirmed in screenshots: rain, flames, particles and decals render in the main view, and world's reflection.js masks the layer out.",
+        "verified": true
+      },
+      {
+        "issue": "#6 Hood cam placement: should be low, hood filling the bottom ~15–20 %, steady",
+        "fix": "The cockpit cams are now rigidly mounted to the body. Position, look target and up vector go through the same pitch/roll about the body pivot as the model, so the hood never moves in frame (checked with forced pitch ±0.07 and roll). The hood look-down angle is now calibrated by ray-casting the hood silhouette from the lens (0.2 m above the hood, just ahead of the windscreen base), so the hood centre sits 15 % up from the bottom at cruising FOV. With the fender bulges that comes to about 18–20 %, and it re-adapts if the car model changes. Hood FOV range is now 66→78 (was 66→90, which made the hood grow at speed). Hood shake is 0.35 and bumper 1.2 (was 1.6 for both), so the hood doesn't jitter. Screenshot: shots/polish-gameplay-hoodfinal-a.png.",
+        "verified": true
+      },
+      {
+        "issue": "#9 Launch control made visible",
+        "fix": "Core hands the HUD hudState.launch = { active, perfect, good }, from a shared LAUNCH constant that _go() also uses. During the countdown the tach shows an amber 'good' band and a green 'perfect' band. The green zone glows and the label reads 'LAUNCH ✓' while the needle is inside it, and it fades out after GO. On GO: PERFECT LAUNCH / GOOD LAUNCH as before, plus new WHEELSPIN (over-rev) and SLOW START (no revs) messages. Screenshots: shots/polish-gameplay-launch-cmp.png and shots/polish-gameplay-launch2-go.png (scripted 60 % throttle gave a perfect launch with a 3.8 m/s boost).",
+        "verified": true
+      },
+      {
+        "issue": "#9 AI racecraft: AI-only races were a procession with no AI-vs-AI position changes; must still finish cleanly",
+        "fix": "Rivals, but not the autopilot, now get racecraft in ai.js: per-lap pace draws plus slow form drift within a lap; seeded corner mistakes (late braking that runs wide, a missed apex, a scruffy exit costing about 0.5–1 s, at roughly 0.05–0.13 per corner); and a personality from aggression (attackers brake later, follow closer and commit earlier; defenders cover the inside when someone is closing). The core grid is no longer in pace order (AI_SKILL/AI_AGGR). I added slipstream (src/core/draft.js plus physics.dragScale) for everyone, the player included. While doing this I found and fixed pre-existing wall hits of 7–14 m/s. Causes: the rubber band planned past the available grip; muFrac extrapolated above 1; avoid offsets were applied where the line sweeps across the road (the S-bend at s≈1090); and there was no braking for the tighter path when off-line. Fixes: a grip cap on planned speed; passing/defending offsets fade out over the look-ahead plus 45 m wherever the line crosses or curves; an off-line speed penalty judged against the next 60 m of track; a predictive wall guard that also eases the throttle; and a soft outer clamp. I also fixed a corner-side sign inversion from the line's curvature. Node pack sim using the real core collisions, 12 seeds: about 4.5 AI-vs-AI swaps per race, 0 wall contacts (the old AI had up to 56 across 6 runs once the grid was shuffled), median car contact 1.8 m/s and none above 9, every car finished, 4 different winners. In-game autopilot 3-lap races at timescale 3 (5 runs): 1–4 AI swaps each, 0 wall contacts, no errors, finishes within about 3 s. All dev/*.mjs tests pass (physics 19 PASS; overtake test now has 0 wall contacts; recovery is fine).",
+        "verified": true
+      },
+      {
+        "issue": "#9 Feel sanity check (keyboard driving)",
+        "fix": "Measured with the core keyboard smoothing replicated: braking 200→100 km/h takes 2.17 s / 90 m (1.31 g); full lock at 100 km/h reaches 1.46 g with yaw response in 0.10 s; a handbrake drift peaks at 45°, holds about 42° and straightens 0.9 s after centring; lift-off at 150 km/h peaks at 6.4° (stable); brake plus full lock at 160 km/h gives a controlled 17° slide. Nothing was clearly off, so the handling tuning is unchanged. Difficulty: the pole sitter is now a mid-pace defender (skill 0.88, was the fastest at 0.95), and slipstream helps the player. In the sim, a stand-in for the player (an AI driver at skill 0.85, roughly decent-human pace) finished in the top 2 in 4 of 6 races, winning once. A real keyboard player was not tested.",
+        "verified": true
+      },
+      {
+        "issue": "#9 Audio mix sanity",
+        "fix": "Rendered stems offline through the real master chain: engine at 6000 rpm and 170 km/h is −17.5 dBFS RMS; music alone −27.8; rain ambience alone −27.9; everything at once (limiter, skid, nitro, opponents, music, rain) −12.1 RMS with a −2.3 dBFS peak; with impact, scrape and backfire the peak is −2.7. Music and rain sit about 10 dB under the engine and the glue compressor, limiter and safety clip stop any clipping. No change needed.",
+        "verified": true
+      }
+    ],
+    "files_changed": [
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/src/core/game.js",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/src/core/camera.js",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/src/core/race.js",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/src/core/shaderPatches.js",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/src/core/draft.js",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/src/ui/hud.js",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/src/vehicle/ai.js",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/src/vehicle/physics.js"
+    ],
+    "cross_module_notes": "CAR: core's headlight exposure (Game._beamExposure) reads each SpotLight's angle, penumbra, map and target live, and caches the lamp frames in car-local space on first use. When a spot has a map, it calls lowBeamProfile(tx, ty) from src/vehicle/carTextures.js through an optional namespace import. If you rename that export or change its meaning (1.0 = horizon reference, tx + = car's right), the core falls back to an assumed cookie peak of 6. Core still applies its hood-view factor of 0.6 to the spots and finds the decal via model.beamDecal. RENDER (all agents): src/core/shaderPatches.js patches THREE.ShaderChunk.lights_fragment_begin once, before anything compiles. For SPOT lights only, direct specular uses roughness ≥ 0.36 and clear-coat roughness ≥ 0.24, because point-light highlights on mirror-like clear-coat were near-singular. Spot lights only exist on the player car. If someone re-patches that chunk, keep the spot-loop RE_Direct call intact or the patch logs a warning and skips itself. LAYERS: core enables LAYERS.NO_REFLECTION on the game camera (Game.init and the CameraRig constructor); world's reflection.js already masks it out. PHYSICS API (optional additions): VehiclePhysics.dragScale (default 1; core lowers it in slipstream through src/core/draft.js) and physics.draft (0..1, could drive a HUD or audio cue). AI API (optional additions): AIDriver.isAutopilot = true turns racecraft off (core sets it on the player's autopilot); ai.stats = { mistakes, defends, laps }; ai.mistake. RACE: lap and finish times are now interpolated within the frame, so results are no longer quantised to the frame time. HUD: state.launch = { active, perfect: [lo, hi], good: [lo, hi] } as fractions of max rpm; Tach.draw takes an optional 7th parameter. DEBUG: window.__game.beamTune lets you tune the exposure caps live. INTEGRATOR: README and CONTRACTS could mention the launch band, slipstream, AI personalities and mistakes, the rigid hood cam, the headlight exposure cap and the spot-light lobe widening. The README line 'a rival far ahead of you backs off...' is still accurate (rubber band unchanged), but planned speed now never exceeds the available grip.",
+    "perf_impact": "No draw calls or render passes added (272 draw calls in race, same range as the README's 250–340). Added CPU work, all small: the headlight exposure loop (4 cars × 2 lamps × 4 heights, once per frame), slipstream (20 pairs at 60 Hz), and a few extra line/curvature lookups per AI update (corner search over about 10 apexes, 12 path samples). Together that is well under 0.05 ms per frame; the telemetry 'sim' section reads about 0.03 ms. GPU: the spot-light shader patch adds a few ALU ops per spot light per lit fragment, which is negligible. The HUD tach now redraws every frame during the 3 s countdown only. Measured about 140 fps uncapped at 1920×1080, DPR 1, in an autopilot race (other agents were editing at the same time; the world section was about 6 ms CPU, not from my changes), and a locked 60 fps with vsync.",
+    "remaining": [
+      "'A decent keyboard player wins in 1–3 attempts' was only checked with proxies: an AI driver at skill 0.85 standing in for the player finished top 2 in 4 of 6 sim races and won once. A real human playtest is still needed; if it's too hard, the knobs are AI_SKILL in game.js and the rubber band in ai.js.",
+      "In-game AI-vs-AI swap counts vary by race (1–4 in 5 in-game runs, 0–13 in the sim, median about 4). They come mostly from mistakes and slipstream on the 650 m straight. Overtakes are now deliberately made only where the racing line runs along the road, which is what keeps cars off the barriers.",
+      "Rubber-band tuning is unchanged, apart from the new cap that stops planned speed exceeding the available grip.",
+      "With a car close ahead the spot lights drop to about 0.3–2 %. Brightness on the road then comes from the car's additive beam decal, which core does not dim; in chase view that looked consistent, but whether the decal should also dim with the exposure cap is the car polisher's call.",
+      "README and CONTRACTS are not updated (integrator-owned); see cross_module_notes."
+    ],
+    "best_screenshots": [
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/polish-gameplay-glare-before-after.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/polish-gameplay-glr-cmp.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/polish-gameplay-glr-d9.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/polish-gameplay-hoodfinal-a.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/polish-gameplay-cams-sheet.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/polish-gameplay-launch-cmp.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/polish-gameplay-launch2-go.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/polish-gameplay-t1b-sheet.png",
+      "/Users/boozybats/Public/Repos/work/genex-stage1-game/shots/polish-gameplay-race7-results.png"
+    ],
+    "other_improvements": [
+      "Lap and finish times are interpolated within the frame (race.js); before, they were quantised to the frame time (50 ms at timescale 3).",
+      "Fixed AI wall hits that predate this pass: the rubber band and speed noise could plan corner speed above the available grip, and muFrac could extrapolate past 1.0 for skill above 0.95 (autopilot 0.97). Planned speed is now capped against grip, and muFrac at 0.985.",
+      "Corner detection in ai.js reads the inside of each corner from the racing line's offset at the apex, because the line's curvature sign is the opposite of what its comment says.",
+      "dev/ai-overtake-test now shows 0 wall contacts in all scenarios (it had 1 in three of them before).",
+      "Slipstream (drag cut up to 42 % in a car's wake at 4–45 m, above 90 km/h) applies to the player as well, giving a NFS-style way to pass on the straights."
+    ]
+  }
+}

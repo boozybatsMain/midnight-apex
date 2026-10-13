@@ -10,6 +10,10 @@ sound files.
 
 Built with **three.js r186 + Vite**, plain ES modules (no TypeScript, no other runtime dependencies).
 
+**How it was built:** one Claude Code session orchestrating 13 subagents in two workflows (contract → 7 parallel
+builders → integrator → review → 4 polishers → verifier). The full process, decisions, workflow scripts and every
+agent's report are in [`docs/process/PROCESS.md`](docs/process/PROCESS.md).
+
 ---
 
 ## Run it
